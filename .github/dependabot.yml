@@ -7,6 +7,19 @@ updates:
     groups:
       dev-dependencies:
         dependency-type: development
+    # Dev deps for @angular/core, typescript, and zone.js are deliberately
+    # pinned to the supported FLOOR (docs/DESIGN.md) so typecheck guarantees
+    # floor compatibility; the CI matrix covers newer majors instead.
+    ignore:
+      - dependency-name: '@angular/core'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'rxjs'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'typescript'
+        update-types: ['version-update:semver-major']
+      # zone.js is 0.x: minors are breaking and coupled to the Angular major
+      - dependency-name: 'zone.js'
+        update-types: ['version-update:semver-major', 'version-update:semver-minor']
   - package-ecosystem: github-actions
     directory: /
     schedule:

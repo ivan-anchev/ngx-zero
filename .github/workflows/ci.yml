@@ -13,9 +13,17 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  verify:
-    name: verify
+  test:
+    # floor: exactly the lockfile — @angular/core@20, zone.js@0.15, TS 5.9.
+    # Dev deps are pinned to the floor by design (docs/DESIGN.md); this leg
+    # guarantees the peer-range floor actually works.
+    # latest: newest Angular/zone.js/TypeScript, guarding the ceiling.
+    name: test (ng-${{ matrix.angular }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        angular: [floor, latest]
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v4
@@ -24,7 +32,19 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - if: matrix.angular == 'latest'
+        run: pnpm add -D @angular/core@latest zone.js@latest typescript@latest
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
       - run: pnpm exec publint
+
+  # Stable aggregate context for branch protection: require "verify" only,
+  # regardless of how the matrix evolves.
+  verify:
+    name: verify
+    needs: test
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - run: test "${{ needs.test.result }}" = "success"
