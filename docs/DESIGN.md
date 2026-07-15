@@ -133,3 +133,14 @@ twice a week so upstream changes page us, not users.
 - Suspense analog: `whenComplete(): Promise` on `QueryRef` for `@defer (when ...)`.
 - Multi-instance DX (`storageKey`): named injection tokens vs factory-scoped helpers.
 - `debounced()`-style helpers for search-as-you-type queries.
+- First-class auth refresh: `withAuthRefresh(() => Promise<string>)` on `provideZero` —
+  the library would subscribe to the `'needs-auth'` connection state, call the refresh
+  fn, and push the token via `connection.connect({auth})`, instead of every app
+  hand-wiring `injectConnectionState()` → refresh → auth-signal write. The reactive
+  options factory already handles the happy path (auth signal: string→string rotation
+  connects in place; presence change or userID change recreates the instance — a token
+  change does NOT reset the client). Caution before committing: upstream *removed*
+  `auth: () => Promise<string>` in favor of explicit string + `connect()`, so we'd be
+  re-adding a shape they deleted — needs answers for concurrent-refresh dedup,
+  refresh-failure backoff, and giving up (surface `'needs-auth'` to the app after N
+  failures rather than looping).
