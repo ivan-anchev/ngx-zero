@@ -1,0 +1,33 @@
+# Upstream-churn tripwire: Zero ships monthly minors with heavy deprecation
+# churn. Test against latest + canary on a schedule so upstream changes page
+# us before they page users.
+name: zero-canary
+
+on:
+  schedule:
+    - cron: '0 6 * * 1,4' # Mon + Thu 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  upstream:
+    name: zero@${{ matrix.tag }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        tag: [latest, canary]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm add -D "@rocicorp/zero@${{ matrix.tag }}"
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build

@@ -1,0 +1,60 @@
+{
+  "name": "ngx-zero",
+  "version": "0.0.0",
+  "description": "Signals-first, zoneless-ready Angular bindings for Rocicorp Zero",
+  "license": "MIT",
+  "author": "Ivan Anchev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ivan-anchev/ngx-zero.git"
+  },
+  "keywords": [
+    "angular",
+    "zero",
+    "rocicorp",
+    "sync",
+    "local-first",
+    "signals",
+    "zoneless"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "check:package": "pnpm build && publint && attw --pack ."
+  },
+  "peerDependencies": {
+    "@angular/core": ">=20.0.0 <23.0.0",
+    "@rocicorp/zero": ">=1.8.0 <2.0.0"
+  },
+  "devDependencies": {
+    "@angular/core": "^20.3.0",
+    "@arethetypeswrong/cli": "^0.18.2",
+    "@rocicorp/zero": "^1.8.0",
+    "publint": "^0.3.12",
+    "rxjs": "^7.8.2",
+    "typescript": "~5.9.2",
+    "vitest": "^3.2.4",
+    "zone.js": "^0.15.1"
+  },
+  "packageManager": "pnpm@11.2.2",
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}
