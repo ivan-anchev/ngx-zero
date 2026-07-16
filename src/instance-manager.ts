@@ -15,7 +15,7 @@ import {
 import { Zero, type ZeroOptions } from '@rocicorp/zero';
 import { diffZeroOptions, isExternalSource, type ZeroInstanceSource } from './options-diff.js';
 import { ngxZeroError } from './errors.js';
-import { wrapOptionFunction } from './utils.js';
+import { tryCatch, wrapOptionFunction } from './utils.js';
 
 /** Hooks a feature can register (multi-provider). */
 export interface ZeroInstanceHooks {
@@ -82,12 +82,12 @@ export class ZeroInstanceManager {
       throw ngxZeroError(
         this.isBrowser
           ? 'No Zero instance is available yet. provideZero() constructs the instance ' +
-              'in an environment initializer at bootstrap — ensure provideZero(...) is in ' +
-              'your ApplicationConfig providers and you are not reading from a bare ' +
-              'EnvironmentInjector that skips initializers.'
+          'in an environment initializer at bootstrap — ensure provideZero(...) is in ' +
+          'your ApplicationConfig providers and you are not reading from a bare ' +
+          'EnvironmentInjector that skips initializers.'
           : 'The Zero instance was read during server-side rendering. ngx-zero never ' +
-              'constructs Zero on the server; guard this read with a browser check, or ' +
-              'use injectQuery/injectMutation which are server-inert by design.',
+          'constructs Zero on the server; guard this read with a browser check, or ' +
+          'use injectQuery/injectMutation which are server-inert by design.',
       );
     }
     return zero;
@@ -134,7 +134,7 @@ export class ZeroInstanceManager {
   #started = false;
 
   constructor(source: ZeroInstanceSource | (() => ZeroInstanceSource)) {
-    this.#sourceFactory = typeof source === 'function' ? source : () => source;    
+    this.#sourceFactory = typeof source === 'function' ? source : () => source;
     inject(DestroyRef).onDestroy(() => this.#destroy());
   }
 
@@ -144,35 +144,26 @@ export class ZeroInstanceManager {
       throw ngxZeroError('provideZero() was provided more than once in the same environment.');
     }
     this.#started = true;
+
     if (!this.isBrowser) {
       return; // SSR: fully inert
     }
 
-    // Effects only flush with change detection; the first construction must be
-    // synchronous so the instance exists before anything can read it. A factory
-    // that throws here fails bootstrap loudly (broken options = programming error).
     this.#reconcile(this.#reactiveSource());
 
-    // A factory that throws on a RERUN surfaces here instead: Angular reports
-    // it, the previous instance stays current, and the next valid emission
-    // recovers.
     effect(
       () => {
-        const nextSource = this.#reactiveSource(); // tracked: every signal the factory read
-        this.#rotationGeneration(); // tracked: rotation requests
-        // Untracked so the effect's dependencies stay exactly the two reads
-        // above — #reconcile reads #currentInstance, which it also writes.
+        const nextSource = this.#reactiveSource();
+        this.#rotationGeneration();
         untracked(() => this.#reconcile(nextSource));
       },
       { injector: this.#environmentInjector },
     );
   }
 
-  /** THE single reconcile funnel — never more than one reconcile in flight. */
   #reconcile(nextSource: ZeroInstanceSource): void {
     const previousSource = this.#currentSource;
-    this.#currentSource = nextSource; // wrappers now see the newest closures — even on no-op
-    const rotationRequested = this.#rotationPending;
+    this.#currentSource = nextSource;
 
     if (isExternalSource(nextSource)) {
       this.#rotationPending = false;
@@ -198,7 +189,7 @@ export class ZeroInstanceManager {
       return;
     }
 
-    const verdict = rotationRequested ? 'recreate' : diffZeroOptions(previousSource, nextSource);
+    const verdict = this.#rotationPending ? 'recreate' : diffZeroOptions(previousSource, nextSource);
     switch (verdict) {
       case 'recreate':
         this.#recreateInstance(nextSource);
@@ -225,28 +216,28 @@ export class ZeroInstanceManager {
     this.#detachAndCloseCurrent();
 
     const instanceRef: InstanceRef = {};
-    let zero: Zero;
-    try {
-      zero = this.#constructZero(this.#prepareConstructorOptions(options, instanceRef));
-    } catch (err) {
+    const constructed = tryCatch(() =>
+      this.#constructZero(this.#prepareConstructorOptions(options, instanceRef)),
+    );
+    if (!constructed.ok) {
       // Never leave the already-closed predecessor visible in the signal.
-      this.#errorHandler.handleError(err);
+      this.#errorHandler.handleError(constructed.error);
       this.#currentInstance.set(undefined);
       this.#ownsInstance = false;
       this.#rotationPending = false;
       return; // the next valid factory emission recovers
     }
+    const zero = constructed.value;
     instanceRef.zero = zero;
     this.#ownsInstance = true;
     this.#authEpochCounter++;
     this.#rotationPending = false; // any recreate satisfies a pending rotation
 
     for (const hook of this.#featureHooks) {
-      try {
-        hook.onInstanceCreated?.(zero); // withInit
-      } catch (err) {
-        // Contained: a throwing init hook must not block publishing the instance.
-        this.#errorHandler.handleError(err);
+      // Contained: a throwing init hook must not block publishing the instance.
+      const created = tryCatch(() => hook.onInstanceCreated?.(zero)); // withInit
+      if (!created.ok) {
+        this.#errorHandler.handleError(created.error);
       }
     }
     this.#currentInstance.set(zero);
@@ -255,28 +246,22 @@ export class ZeroInstanceManager {
 
   #detachAndCloseCurrent(): void {
     for (const detach of this.#detachCallbacks.splice(0)) {
-      try {
-        detach();
-      } catch {
-        // A broken feature must not break reconcile.
-      }
+      tryCatch(detach); // a broken feature must not break reconcile
     }
     const currentInstance = this.#currentInstance();
     if (currentInstance !== undefined && this.#ownsInstance) {
-      void currentInstance.close().catch(() => {}); // a routine recreate must never throw
+      void currentInstance.close().catch(() => { }); // a routine recreate must never throw
     }
   }
 
   #attachFeatureHooks(zero: Zero): void {
     for (const hook of this.#featureHooks) {
-      try {
-        const detach = hook.onInstanceAttached?.(zero);
-        if (detach) {
-          this.#detachCallbacks.push(detach);
-        }
-      } catch (err) {
-        // Contained: one broken feature must not starve the remaining hooks.
-        this.#errorHandler.handleError(err);
+      // Contained: one broken feature must not starve the remaining hooks.
+      const attached = tryCatch(() => hook.onInstanceAttached?.(zero));
+      if (!attached.ok) {
+        this.#errorHandler.handleError(attached.error);
+      } else if (attached.value) {
+        this.#detachCallbacks.push(attached.value);
       }
     }
   }
@@ -315,13 +300,10 @@ export class ZeroInstanceManager {
         return;
       }
       const userCallback = this.#currentOptions()?.onClientStateNotFound;
-      if (userCallback) {
-        try {
-          userCallback();
-          return;
-        } catch {
-          // Fall through to rotation — the client is closed either way.
-        }
+      // A throwing user callback falls through to rotation — the client is
+      // closed either way.
+      if (userCallback && tryCatch(userCallback).ok) {
+        return;
       }
       this.#rotationPending = true;
       this.#rotationGeneration.update(generation => generation + 1);

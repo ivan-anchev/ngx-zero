@@ -1,7 +1,7 @@
 import { DestroyRef, inject, InjectionToken, Injector } from '@angular/core';
 import type { ConnectionState, Zero } from '@rocicorp/zero';
 import { zeroFeature, type ZeroFeature } from './features.js';
-import { expBackoffMs } from './utils.js';
+import { expBackoffMs, tryCatch } from './utils.js';
 import {
   ZERO_INSTANCE_HOOKS,
   ZERO_INSTANCE_MANAGER,
@@ -161,20 +161,14 @@ export class ZeroAuthRefresher {
     this.#attempts++;
     const epoch = this.#manager.authEpoch(); // capture before awaiting
 
-    let token: string | null | undefined | false;
-    let failed = false;
-    try {
-      token = await this.#config.refreshFn();
-    } catch {
-      failed = true;
-    }
+    const refreshed = await tryCatch(this.#config.refreshFn);
 
     if (this.#destroyed) {
       this.#inflight = false;
       return;
     }
 
-    if (failed) {
+    if (!refreshed.ok) {
       // Transient → backoff, release latch, then RE-CHECK current state (if
       // the factory fixed auth meanwhile, no retry happens at all).
       await this.#sleep(this.#backoffDelay(this.#attempts - 1));
@@ -187,11 +181,11 @@ export class ZeroAuthRefresher {
 
     this.#inflight = false;
 
-    if (typeof token === 'string') {
+    if (typeof refreshed.value === 'string') {
       // "Refresh produced a token" ≠ "server accepted it". If rejected,
       // needs-auth fires again → next kick → #attempts still counting →
       // converges to give-up.
-      this.#push(token, epoch);
+      this.#push(refreshed.value, epoch);
       return;
     }
     this.#giveUp(state); // null-like: no token exists — retrying can't mint a session
@@ -223,11 +217,8 @@ export class ZeroAuthRefresher {
    * forever. Fall back to the default schedule instead.
    */
   #backoffDelay(attempt: number): number {
-    try {
-      return this.#config.backoffMs?.(attempt) ?? expBackoffMs(attempt);
-    } catch {
-      return expBackoffMs(attempt);
-    }
+    const delay = tryCatch(() => this.#config.backoffMs?.(attempt));
+    return delay.ok ? (delay.value ?? expBackoffMs(attempt)) : expBackoffMs(attempt);
   }
 
   #recheck(): void {
@@ -246,11 +237,7 @@ export class ZeroAuthRefresher {
       return;
     }
     this.#givenUp = true;
-    try {
-      this.#config.onGiveUp?.(state);
-    } catch {
-      /* user callback contained */
-    }
+    tryCatch(() => this.#config.onGiveUp?.(state)); // user callback contained
   }
 
   #sleep(ms: number): Promise<void> {

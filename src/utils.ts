@@ -1,6 +1,44 @@
 /** Shared pure helpers. No Angular imports; Zero types only. */
 import type { ZeroOptions } from '@rocicorp/zero';
 
+/** Outcome of a `tryCatch` call: narrow on `ok` to reach `value` or `error`. */
+export type Result<T> = { ok: true; value: T } | { ok: false; error: unknown };
+
+/**
+ * Runs a function and returns its outcome as a `Result` instead of throwing.
+ * The value type is inferred from the function; an async function (or one
+ * returning a promise) yields a `Promise<Result<T>>` whose rejection is
+ * captured the same way — `await tryCatch(...)` never throws.
+ */
+export function tryCatch<T>(fn: () => Promise<T>): Promise<Result<T>>;
+export function tryCatch<T>(fn: () => T): Result<T>;
+export function tryCatch<T>(fn: () => T | Promise<T>): Result<T> | Promise<Result<T>> {
+  try {
+    const value = fn();
+    if (isThenable(value)) {
+      return Promise.resolve(value as Promise<T>).then(
+        resolved => ({ ok: true, value: resolved }),
+        (error: unknown) => ({ ok: false, error }),
+      );
+    }
+    return { ok: true, value: value as T };
+  } catch (error) {
+    return { ok: false, error };
+  }
+}
+
+/**
+ * Duck-typed on purpose: `instanceof Promise` misses native promises when
+ * zone.js has replaced the global `Promise` with `ZoneAwarePromise`.
+ */
+function isThenable(value: unknown): value is PromiseLike<unknown> {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as { then?: unknown }).then === 'function'
+  );
+}
+
 /**
  * `Object.is` plus one-level shallow comparison for plain arrays/objects
  * (prototype `Object.prototype` or `null`). Class-prototyped values
