@@ -15,17 +15,18 @@ import {
 import { Zero, type ZeroOptions } from '@rocicorp/zero';
 import { diffZeroOptions, isExternalSource, type ZeroInstanceSource } from './options-diff.js';
 import { ngxZeroError } from './errors.js';
+import { wrapOptionFunction } from './utils.js';
 
-/** Hooks a feature can register (multi-provider). Deliberately tiny. */
+/** Hooks a feature can register (multi-provider). */
 export interface ZeroInstanceHooks {
   /**
-   * Once per OWNED construction, after `new Zero(...)`, before the signal
-   * flips. Not called for external `{ zero }` (React `init` parity).
+   * Called once per OWNED construction, after `new Zero(...)`, before the
+   * instance signal flips. Not called for external `{ zero }`.
    */
   onInstanceCreated?(zero: Zero): void;
   /**
-   * For EVERY instance that becomes current (owned + external), after the
-   * signal flips. Optional detach fn is called before replacement / on destroy.
+   * Called for every instance that becomes current (owned and external), after
+   * the signal flips. The returned detach fn runs before replacement / on destroy.
    */
   onInstanceAttached?(zero: Zero): VoidFunction | void;
 }
@@ -38,57 +39,47 @@ export const ZERO_INSTANCE_MANAGER = new InjectionToken<ZeroInstanceManager>(
   'ngx-zero/instance-manager',
 );
 
-/**
- * Construction seam for tests: override to count constructions / capture
- * options / return fakes. Production default: `new Zero(opts)`.
- */
-export const ZERO_CONSTRUCTOR = new InjectionToken<(opts: ZeroOptions) => Zero>(
+/** Construction seam for tests: override to count constructions or return fakes. */
+export const ZERO_CONSTRUCTOR = new InjectionToken<(options: ZeroOptions) => Zero>(
   'ngx-zero/zero-constructor',
-  { providedIn: 'root', factory: () => opts => new Zero(opts) },
+  { providedIn: 'root', factory: () => options => new Zero(options) },
 );
 
 /**
- * Identity box filled right after `new Zero(...)` returns. The CSNF wrapper
- * closes over it to tell "my instance is still current" apart from "I am a
- * late fire from a superseded, closing instance" (close() is unawaited —
- * callbacks can straggle).
+ * Ties constructor callbacks to the instance they were created for; `zero` is
+ * filled in right after `new Zero(...)` returns. Needed because `close()` is
+ * not awaited, so a superseded instance can still fire callbacks late.
  */
-type InstanceBox = { zero?: Zero };
+type InstanceRef = { zero?: Zero };
 
 /**
  * Owns the Zero instance behind `ZERO_INSTANCE_MANAGER`. Every lifecycle
  * transition (factory rerun, in-place auth connect, client-state-not-found
- * rotation, external swap) funnels through ONE synchronous reconcile function
- * driven by one effect, so no two reconciles ever interleave.
+ * rotation, external swap) funnels through `#reconcile`, driven by one effect,
+ * so no two reconciles ever interleave.
  */
 export class ZeroInstanceManager {
-  readonly #injector = inject(EnvironmentInjector);
-  readonly #hooks = inject(ZERO_INSTANCE_HOOKS, { optional: true }) ?? [];
-  readonly #construct = inject(ZERO_CONSTRUCTOR);
+  readonly #environmentInjector = inject(EnvironmentInjector);
+  readonly #featureHooks = inject(ZERO_INSTANCE_HOOKS, { optional: true }) ?? [];
+  readonly #constructZero = inject(ZERO_CONSTRUCTOR);
   readonly #errorHandler = inject(ErrorHandler);
 
-  /**
-   * isPlatformBrowser is literally `platformId === 'browser'`; @angular/common
-   * is not a peer and must not become one.
-   */
-  readonly browser: boolean = inject(PLATFORM_ID) === 'browser';
+  /** `isPlatformBrowser` without depending on `@angular/common` (not a peer). */
+  readonly isBrowser: boolean = inject(PLATFORM_ID) === 'browser';
 
   /**
-   * Nullable internal shape — THE seam injectQuery/injectMutation consume
-   * later: observe "no instance" without throwing; stay inert on the server.
+   * `undefined` until constructed and always on the server — the non-throwing
+   * seam injectQuery/injectMutation consume.
    */
   readonly instance: Signal<Zero | undefined>;
-  readonly #instance = signal<Zero | undefined>(undefined);
+  readonly #currentInstance = signal<Zero | undefined>(undefined);
 
-  /**
-   * Public-facing read: throws at READ time (SSR contract). `computed` caches
-   * the throw until deps change — deps change exactly when an instance appears.
-   */
+  /** Public-facing read: throws at READ time until an instance exists (SSR contract). */
   readonly zeroOrThrow: Signal<Zero> = computed(() => {
-    const z = this.#instance();
-    if (z === undefined) {
+    const zero = this.#currentInstance();
+    if (zero === undefined) {
       throw ngxZeroError(
-        this.browser
+        this.isBrowser
           ? 'No Zero instance is available yet. provideZero() constructs the instance ' +
               'in an environment initializer at bootstrap — ensure provideZero(...) is in ' +
               'your ApplicationConfig providers and you are not reading from a bare ' +
@@ -98,292 +89,257 @@ export class ZeroInstanceManager {
               'use injectQuery/injectMutation which are server-inert by design.',
       );
     }
-    return z;
+    return zero;
   });
 
   /**
-   * Monotonic auth epoch — bumped on every recreate and every factory-driven
-   * connect. The auth refresher captures it before awaiting and discards stale
-   * results. Plain accessor, not a signal (nothing renders from it).
+   * Monotonic epoch, bumped on every recreate and every in-place connect. The
+   * auth refresher captures it before awaiting and discards stale tokens.
    */
   #authEpochCounter = 0;
   authEpoch(): number {
     return this.#authEpochCounter;
   }
 
-  readonly #source: () => ZeroInstanceSource;
+  readonly #sourceFactory: () => ZeroInstanceSource;
 
   /**
-   * Factory made reactive + injectable on every rerun (the original injection
-   * context is gone by the time the effect reruns it). `computed` caching means
-   * the synchronous first read in start() and the effect's first run share ONE
-   * evaluation.
+   * The user's factory, reactive and re-runnable in injection context.
+   * `computed` caching lets the synchronous first read in `start()` and the
+   * effect's first run share one evaluation.
    */
-  readonly #options = computed<ZeroInstanceSource>(() =>
-    runInInjectionContext(this.#injector, this.#source),
+  readonly #reactiveSource = computed<ZeroInstanceSource>(() =>
+    runInInjectionContext(this.#environmentInjector, this.#sourceFactory),
   );
 
   /**
-   * Latest raw factory output. Updated on EVERY reconcile including no-ops —
-   * the stable wrappers delegate through it. This is what makes ignoring
-   * function identity sound.
+   * Most recent factory output, refreshed on every reconcile including no-ops.
+   * The stable option wrappers delegate through it — that is what makes
+   * ignoring function identity in the diff sound.
    */
-  #latest: ZeroInstanceSource | undefined;
+  #currentSource: ZeroInstanceSource | undefined;
 
-  #owned = false;
+  #ownsInstance = false;
 
   /**
-   * Rotation plumbing: `#rotationPending` collapses double rotation; any
-   * recreate clears it. `#rotationGen` carries the request into the reactive
-   * world — a signal write, safe from Zero's internal callbacks in both zone
-   * modes.
+   * A client-state-not-found rotation request: the signal write carries it
+   * into the reconcile effect (safe from Zero callbacks in both zone modes);
+   * the pending flag collapses double fires until a recreate lands.
    */
   #rotationPending = false;
-  readonly #rotationGen = signal(0);
+  readonly #rotationGeneration = signal(0);
 
-  #detach: VoidFunction[] = [];
-  #destroyed = false;
+  #detachCallbacks: VoidFunction[] = [];
   #started = false;
 
   constructor(source: ZeroInstanceSource | (() => ZeroInstanceSource)) {
-    this.#source = typeof source === 'function' ? source : () => source;
-    this.instance = this.#instance.asReadonly();
+    this.#sourceFactory = typeof source === 'function' ? source : () => source;
+    this.instance = this.#currentInstance.asReadonly();
     inject(DestroyRef).onDestroy(() => this.#destroy());
   }
 
-  /**
-   * Called once from provideZero's environment initializer. Construction is
-   * SYNCHRONOUS (root effects only flush with first CD — effect-only
-   * construction would break the non-nullable first-render contract). A
-   * factory that throws HERE fails bootstrap loudly (deliberate: broken
-   * options factory = programming error; rerun throws are handled by the
-   * effect instead).
-   */
+  /** Called once from provideZero's environment initializer. */
   start(): void {
     if (this.#started) {
       throw ngxZeroError('provideZero() was provided more than once in the same environment.');
     }
     this.#started = true;
-    if (!this.browser) {
+    if (!this.isBrowser) {
       return; // SSR: fully inert
     }
 
-    const first = this.#options();
-    untracked(() => this.#apply(first));
+    // Effects only flush with change detection; the first construction must be
+    // synchronous so the instance exists before anything can read it. A factory
+    // that throws here fails bootstrap loudly (broken options = programming error).
+    const firstSource = this.#reactiveSource();
+    untracked(() => this.#reconcile(firstSource));
 
-    // Rerun-throw semantics: factory throw → computed rethrows here → Angular
-    // routes to ErrorHandler; #apply never runs; previous instance stays
-    // current; computed re-evaluates on next dep change → self-recovers.
+    // A factory that throws on a RERUN surfaces here instead: Angular reports
+    // it, the previous instance stays current, and the next valid emission
+    // recovers.
     effect(
       () => {
-        const next = this.#options(); // tracked: every signal the factory read
-        this.#rotationGen(); // tracked: rotation requests
-        untracked(() => this.#apply(next));
+        const nextSource = this.#reactiveSource(); // tracked: every signal the factory read
+        this.#rotationGeneration(); // tracked: rotation requests
+        untracked(() => this.#reconcile(nextSource));
       },
-      { injector: this.#injector },
+      { injector: this.#environmentInjector },
     );
   }
 
   /** THE single reconcile funnel — never more than one reconcile in flight. */
-  #apply(next: ZeroInstanceSource): void {
-    if (this.#destroyed) {
-      return;
-    }
+  #reconcile(nextSource: ZeroInstanceSource): void {
+    const previousSource = this.#currentSource;
+    this.#currentSource = nextSource; // wrappers now see the newest closures — even on no-op
+    const rotationRequested = this.#rotationPending;
 
-    const prev = this.#latest;
-    this.#latest = next; // wrappers now see the newest closures — even on no-op
-
-    const rotate = this.#rotationPending;
-
-    if (isExternalSource(next)) {
+    if (isExternalSource(nextSource)) {
       this.#rotationPending = false;
-      const current = this.#instance();
-      if (current === next.zero) {
+      if (this.#currentInstance() === nextSource.zero) {
         return;
       }
-      this.#disposeCurrent(); // closes only if owned
-      this.#owned = false;
-      this.#instance.set(next.zero);
-      this.#attach(next.zero); // features attach to external too; withInit does not
+      this.#detachAndCloseCurrent(); // closes only if owned
+      this.#ownsInstance = false;
+      this.#currentInstance.set(nextSource.zero);
+      this.#attachFeatureHooks(nextSource.zero); // features attach to external too; withInit does not
       return;
     }
 
     // First construction, recovery from a failed one, or a switch away from an
     // external source — nothing meaningful to diff against.
-    const current = this.#instance();
-    if (current === undefined || prev === undefined || isExternalSource(prev)) {
-      this.#recreate(next);
+    const currentInstance = this.#currentInstance();
+    if (
+      currentInstance === undefined ||
+      previousSource === undefined ||
+      isExternalSource(previousSource)
+    ) {
+      this.#recreateInstance(nextSource);
       return;
     }
 
-    const verdict = rotate ? 'recreate' : diffZeroOptions(prev, next);
+    const verdict = rotationRequested ? 'recreate' : diffZeroOptions(previousSource, nextSource);
     switch (verdict) {
       case 'recreate':
-        this.#recreate(next);
+        this.#recreateInstance(nextSource);
         break;
       case 'connect': {
-        // Token rotated string→string: push in place, no recreate.
+        // Auth token rotated string→string: push in place, no recreate.
         this.#authEpochCounter++;
-        void current.connection.connect({ auth: next.auth as string }).catch(err => {
-          // Report instead of a bare void — only if still current.
-          if (this.#instance() === current) {
+        void currentInstance.connection.connect({ auth: nextSource.auth as string }).catch(err => {
+          if (this.#currentInstance() === currentInstance) {
             this.#errorHandler.handleError(err);
           }
         });
         break;
       }
       case 'noop':
-        break; // strictly nothing — #latest already refreshed above
+        break;
     }
   }
 
-  #recreate(opts: ZeroOptions): void {
-    // Close-then-construct (React order). close() NOT awaited: the signal must
-    // never transiently hold undefined; ActiveClientsManager arbitrates
+  #recreateInstance(options: ZeroOptions): void {
+    // Close-then-construct, close NOT awaited: the signal must never
+    // transiently hold undefined; Zero's ActiveClientsManager arbitrates
     // same-storage overlap.
-    this.#disposeCurrent();
+    this.#detachAndCloseCurrent();
 
-    const owner: InstanceBox = {};
+    const instanceRef: InstanceRef = {};
     let zero: Zero;
     try {
-      zero = this.#construct(this.#toConstructorOptions(opts, owner));
+      zero = this.#constructZero(this.#prepareConstructorOptions(options, instanceRef));
     } catch (err) {
-      // Never leave the already-closed predecessor visible.
+      // Never leave the already-closed predecessor visible in the signal.
       this.#errorHandler.handleError(err);
-      this.#instance.set(undefined);
-      this.#owned = false;
+      this.#currentInstance.set(undefined);
+      this.#ownsInstance = false;
       this.#rotationPending = false;
-      return; // next valid factory emission recovers
+      return; // the next valid factory emission recovers
     }
-    owner.zero = zero;
-    this.#owned = true;
+    instanceRef.zero = zero;
+    this.#ownsInstance = true;
     this.#authEpochCounter++;
     this.#rotationPending = false; // any recreate satisfies a pending rotation
 
-    for (const h of this.#hooks) {
-      // withInit. Contained: a throwing init is a feature bug, not a reason to
-      // leave the already-closed predecessor visible in the signal.
+    for (const hook of this.#featureHooks) {
       try {
-        h.onInstanceCreated?.(zero);
+        hook.onInstanceCreated?.(zero); // withInit
       } catch (err) {
+        // Contained: a throwing init hook must not block publishing the instance.
         this.#errorHandler.handleError(err);
       }
     }
-    this.#instance.set(zero);
-    this.#attach(zero);
+    this.#currentInstance.set(zero);
+    this.#attachFeatureHooks(zero);
   }
 
-  #disposeCurrent(): void {
-    for (const d of this.#detach.splice(0)) {
+  #detachAndCloseCurrent(): void {
+    for (const detach of this.#detachCallbacks.splice(0)) {
       try {
-        d();
+        detach();
       } catch {
-        /* feature detach must never break reconcile */
+        // A broken feature must not break reconcile.
       }
     }
-    const current = this.#instance();
-    if (current !== undefined && this.#owned) {
-      void current.close().catch(() => {}); // routine recreate must never throw
+    const currentInstance = this.#currentInstance();
+    if (currentInstance !== undefined && this.#ownsInstance) {
+      void currentInstance.close().catch(() => {}); // a routine recreate must never throw
     }
   }
 
-  #attach(zero: Zero): void {
-    for (const h of this.#hooks) {
-      // Contained like detach: one broken feature must not break reconcile or
-      // starve the remaining hooks.
+  #attachFeatureHooks(zero: Zero): void {
+    for (const hook of this.#featureHooks) {
       try {
-        const detach = h.onInstanceAttached?.(zero);
+        const detach = hook.onInstanceAttached?.(zero);
         if (detach) {
-          this.#detach.push(detach);
+          this.#detachCallbacks.push(detach);
         }
       } catch (err) {
+        // Contained: one broken feature must not starve the remaining hooks.
         this.#errorHandler.handleError(err);
       }
     }
   }
 
   /**
-   * Options actually handed to `new Zero(...)`: every function-valued entry
-   * becomes a stable wrapper delegating to the latest factory output, and
-   * `onClientStateNotFound` is ALWAYS ours.
+   * The options actually handed to `new Zero(...)`: every function-valued
+   * entry becomes a reference-stable wrapper delegating to the latest factory
+   * output, and `onClientStateNotFound` is always the library's own handler.
    */
-  #toConstructorOptions(opts: ZeroOptions, owner: InstanceBox): ZeroOptions {
-    const out: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(opts)) {
+  #prepareConstructorOptions(options: ZeroOptions, instanceRef: InstanceRef): ZeroOptions {
+    const prepared: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(options)) {
       if (key === 'onClientStateNotFound') {
         continue;
       }
-      out[key] = typeof value === 'function' ? this.#wrapFunctionOption(key) : value;
+      prepared[key] =
+        typeof value === 'function' ? wrapOptionFunction(key, () => this.#currentOptions()) : value;
     }
-    out['onClientStateNotFound'] = this.#wrapClientStateNotFound(owner);
-    return out as ZeroOptions;
+    prepared['onClientStateNotFound'] = this.#clientStateNotFoundHandler(instanceRef);
+    return prepared as ZeroOptions;
   }
 
   /**
-   * CSNF policy: the user callback wins; absent or throwing → guarded
-   * rotation. No `location.reload()` — Zero's default only applies when the
-   * option is absent, and ours never is.
+   * Client-state-not-found policy: the user callback wins; absent or throwing
+   * → rotate to a fresh instance (never `location.reload()`). Fires from Zero
+   * internals outside any zone, so the only reactive act is a signal write.
    */
-  #wrapClientStateNotFound(owner: InstanceBox): () => void {
+  #clientStateNotFoundHandler(instanceRef: InstanceRef): () => void {
     return () => {
-      // Fires from Zero internals, outside any zone — only a signal write below.
-      if (this.#destroyed || this.#rotationPending) {
+      if (this.#rotationPending) {
         return;
       }
-      // Stale-instance guard: a superseded instance's late CSNF (close() is
-      // unawaited) must not rotate its healthy replacement. `owner.zero` is
-      // only unset while `new Zero(...)` itself is still running.
-      if (owner.zero !== undefined && this.#instance() !== owner.zero) {
+      // A late fire from a superseded, closing instance must not rotate its
+      // healthy replacement.
+      if (instanceRef.zero !== undefined && this.#currentInstance() !== instanceRef.zero) {
         return;
       }
-      const user = this.#latestOptions()?.onClientStateNotFound;
-      if (user) {
+      const userCallback = this.#currentOptions()?.onClientStateNotFound;
+      if (userCallback) {
         try {
-          user();
+          userCallback();
           return;
         } catch {
-          /* fall through to rotation (React parity) */
+          // Fall through to rotation — the client is closed either way.
         }
       }
       this.#rotationPending = true;
-      this.#rotationGen.update(n => n + 1); // → reconcile effect → recreate
+      this.#rotationGeneration.update(generation => generation + 1);
     };
   }
 
-  #wrapFunctionOption(key: string): (...args: unknown[]) => unknown {
-    return (...args: unknown[]) => {
-      const fn = this.#latestOptions()?.[key as keyof ZeroOptions] as
-        | ((...a: unknown[]) => unknown)
-        | undefined;
-      if (typeof fn === 'function') {
-        return fn(...args);
-      }
-      // Transient window (presence flip → recreate on the same sync reconcile,
-      // but Zero may call from a microtask in between). Per-key safe fallbacks:
-      if (key === 'batchViewUpdates') {
-        (args[0] as () => void)(); // MUST stay synchronous
-      }
-      return undefined;
-    };
-  }
-
-  #latestOptions(): ZeroOptions | undefined {
-    const l = this.#latest;
-    return l === undefined || isExternalSource(l) ? undefined : l;
+  #currentOptions(): ZeroOptions | undefined {
+    const source = this.#currentSource;
+    return source === undefined || isExternalSource(source) ? undefined : source;
   }
 
   /**
-   * Synchronous teardown (DestroyRef): close fired + swallowed; NOTHING may
-   * throw. Zero persists continuously → unawaited close loses nothing
-   * (documented). `#destroyed` makes every late async straggler a no-op.
+   * Synchronous teardown (DestroyRef): nothing here may throw. Close is
+   * fire-and-forget — Zero persists continuously, so an unawaited close loses
+   * nothing.
    */
   #destroy(): void {
-    if (this.#destroyed) {
-      return;
-    }
-    this.#destroyed = true;
-    this.#disposeCurrent();
-    this.#instance.set(undefined);
-    this.#owned = false;
+    this.#detachAndCloseCurrent();
+    this.#currentInstance.set(undefined);
+    this.#ownsInstance = false;
   }
 }

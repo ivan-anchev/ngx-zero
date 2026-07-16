@@ -12,7 +12,7 @@
  * canary test in tests/options-diff.spec.ts is the tripwire.
  */
 import type { Zero, ZeroOptions } from '@rocicorp/zero';
-import { valueEquals } from './utils/equality.js';
+import { optionEquals } from './utils.js';
 
 /** `{ zero }` — externally-owned instance mode: adopted as-is, never closed. */
 export interface ExternalZeroSource {
@@ -51,24 +51,6 @@ function diffableKeys(prev: ZeroOptions, next: ZeroOptions): Set<string> {
   keys.delete('auth');
   keys.delete('onClientStateNotFound');
   return keys;
-}
-
-/**
- * Function-valued entries compare by PRESENCE only: fn↔fn is equal regardless
- * of identity (sound because instances never capture user functions, only
- * stable wrappers delegating to the latest factory output), while fn↔absent
- * differs (presence toggles Zero's built-in defaults, e.g. omitted
- * `onUpdateNeeded` means `location.reload()`). Everything else compares with
- * `valueEquals` — `Object.is` plus one-level shallow for plain literals,
- * which kills the inline `queryHeaders: {…}` / `context: {…}` footgun.
- */
-function optionEquals(a: unknown, b: unknown): boolean {
-  const aIsFn = typeof a === 'function';
-  const bIsFn = typeof b === 'function';
-  if (aIsFn || bIsFn) {
-    return aIsFn === bIsFn;
-  }
-  return valueEquals(a, b);
 }
 
 /**

@@ -1,7 +1,7 @@
 import { DestroyRef, inject, InjectionToken, Injector } from '@angular/core';
 import type { ConnectionState, Zero } from '@rocicorp/zero';
 import { zeroFeature, type ZeroFeature } from './features.js';
-import { expBackoffMs } from './utils/backoff.js';
+import { expBackoffMs } from './utils.js';
 import {
   ZERO_INSTANCE_HOOKS,
   ZERO_INSTANCE_MANAGER,

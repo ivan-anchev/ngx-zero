@@ -5,7 +5,7 @@ import {
   isExternalSource,
   type ZeroReconcileVerdict,
 } from '../src/options-diff.js';
-import { valueEquals } from '../src/utils/equality.js';
+import { valueEquals } from '../src/utils.js';
 
 const base = (over: Partial<ZeroOptions> = {}): ZeroOptions =>
   ({ schema: SCHEMA, cacheURL: 'http://cache', userID: 'u1', ...over }) as ZeroOptions;
