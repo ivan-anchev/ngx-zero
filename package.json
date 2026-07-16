@@ -33,10 +33,12 @@
   ],
   "scripts": {
     "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
     "build": "rm -rf dist && tsc -p tsconfig.build.json",
-    "check:package": "pnpm build && publint && attw --pack ."
+    "check:package": "pnpm build && publint && attw --pack .",
+    "prepare": "husky"
   },
   "peerDependencies": {
     "@angular/core": ">=20.0.0 <23.0.0",
@@ -45,12 +47,20 @@
   "devDependencies": {
     "@angular/core": "^20.3.0",
     "@arethetypeswrong/cli": "^0.18.2",
+    "@eslint/js": "^10.0.1",
     "@rocicorp/zero": "^1.8.0",
+    "eslint": "^10.7.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.0.8",
     "publint": "^0.3.12",
     "rxjs": "^7.8.2",
     "typescript": "~5.9.2",
+    "typescript-eslint": "^8.64.0",
     "vitest": "^3.2.4",
     "zone.js": "^0.15.1"
+  },
+  "lint-staged": {
+    "*.{ts,js}": "eslint --fix"
   },
   "packageManager": "pnpm@11.2.2",
   "publishConfig": {
