@@ -216,18 +216,18 @@ export class ZeroInstanceManager {
     this.#detachAndCloseCurrent();
 
     const instanceRef: InstanceRef = {};
-    const constructed = tryCatch(() =>
+    const { result: instance, error } = tryCatch(() =>
       this.#constructZero(this.#prepareConstructorOptions(options, instanceRef)),
     );
-    if (constructed.error) {
+    if (error) {
       // Never leave the already-closed predecessor visible in the signal.
-      this.#errorHandler.handleError(constructed.error);
+      this.#errorHandler.handleError(error);
       this.#currentInstance.set(undefined);
       this.#ownsInstance = false;
       this.#rotationPending = false;
       return; // the next valid factory emission recovers
     }
-    const zero = constructed.result;
+    const zero = instance;
     instanceRef.zero = zero;
     this.#ownsInstance = true;
     this.#authEpochCounter++;
@@ -235,9 +235,9 @@ export class ZeroInstanceManager {
 
     for (const hook of this.#featureHooks) {
       // Contained: a throwing init hook must not block publishing the instance.
-      const created = tryCatch(() => hook.onInstanceCreated?.(zero)); // withInit
-      if (created.error) {
-        this.#errorHandler.handleError(created.error);
+      const { error } = tryCatch(() => hook.onInstanceCreated?.(zero)); // withInit
+      if (error) {
+        this.#errorHandler.handleError(error);
       }
     }
     this.#currentInstance.set(zero);
@@ -257,11 +257,11 @@ export class ZeroInstanceManager {
   #attachFeatureHooks(zero: Zero): void {
     for (const hook of this.#featureHooks) {
       // Contained: one broken feature must not starve the remaining hooks.
-      const attached = tryCatch(() => hook.onInstanceAttached?.(zero));
-      if (attached.error) {
-        this.#errorHandler.handleError(attached.error);
-      } else if (attached.result) {
-        this.#detachCallbacks.push(attached.result);
+      const { result, error } = tryCatch(() => hook.onInstanceAttached?.(zero));
+      if (error) {
+        this.#errorHandler.handleError(error);
+      } else if (result) {
+        this.#detachCallbacks.push(result);
       }
     }
   }

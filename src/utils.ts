@@ -21,13 +21,14 @@ export function tryCatch<T>(fn: () => T): Result<T>;
 export function tryCatch<T>(fn: () => T | Promise<T>): Result<T> | Promise<Result<T>> {
   try {
     const value = fn();
+    
     if (isThenable(value)) {
-      return Promise.resolve(value as Promise<T>).then(
+      return Promise.resolve(value).then(
         result => ({ result }),
-        (thrown: unknown) => ({ error: toError(thrown) }),
+        thrown => ({ error: toError(thrown) }),
       );
     }
-    return { result: value as T };
+    return { result: value };
   } catch (thrown) {
     return { error: toError(thrown) };
   }
@@ -127,4 +128,25 @@ export function wrapOptionFunction(
  */
 export function expBackoffMs(attempt: number, base = 1000, cap = 30_000): number {
   return Math.min(base * 2 ** attempt, cap);
+}
+
+/**
+ * Timer-based delay. An aborted signal RESOLVES the promise early (never
+ * rejects) and clears the timer — callers decide what abort means by
+ * re-checking their own state after the await.
+ */
+export function sleep(ms: number, abort?: AbortSignal): Promise<void> {
+  return new Promise(resolve => {
+    if (abort?.aborted) {
+      resolve();
+      return;
+    }
+    const done = (): void => {
+      clearTimeout(timer);
+      abort?.removeEventListener('abort', done);
+      resolve();
+    };
+    const timer = setTimeout(done, ms);
+    abort?.addEventListener('abort', done, { once: true });
+  });
 }

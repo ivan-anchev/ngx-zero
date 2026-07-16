@@ -1,5 +1,5 @@
-import { describe, expect, expectTypeOf, it } from 'vitest';
-import { expBackoffMs, tryCatch, type Result } from '../src/utils.js';
+import { afterEach, beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
+import { expBackoffMs, sleep, tryCatch, type Result } from '../src/utils.js';
 
 describe('tryCatch', () => {
   it('returns the result for a sync function', () => {
@@ -56,5 +56,42 @@ describe('expBackoffMs', () => {
     expect([0, 1, 2, 5, 10].map(attempt => expBackoffMs(attempt))).toEqual([
       1000, 2000, 4000, 30_000, 30_000,
     ]);
+  });
+});
+
+describe('sleep', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('resolves after the given delay', async () => {
+    let elapsed = false;
+    void sleep(1000).then(() => (elapsed = true));
+
+    await vi.advanceTimersByTimeAsync(999);
+    expect(elapsed).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(elapsed).toBe(true);
+  });
+
+  it('abort resolves early (never rejects) and clears the timer', async () => {
+    const controller = new AbortController();
+    let elapsed = false;
+    void sleep(1000, controller.signal).then(() => (elapsed = true));
+
+    controller.abort();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(elapsed).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('resolves immediately on an already-aborted signal without scheduling a timer', async () => {
+    const controller = new AbortController();
+    controller.abort();
+
+    let elapsed = false;
+    void sleep(1000, controller.signal).then(() => (elapsed = true));
+    expect(vi.getTimerCount()).toBe(0);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(elapsed).toBe(true);
   });
 });

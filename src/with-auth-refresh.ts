@@ -1,7 +1,7 @@
 import { DestroyRef, inject, InjectionToken, Injector } from '@angular/core';
 import type { ConnectionState, Zero } from '@rocicorp/zero';
 import { zeroFeature, type ZeroFeature } from './features.js';
-import { expBackoffMs, tryCatch } from './utils.js';
+import { expBackoffMs, sleep, tryCatch } from './utils.js';
 import {
   ZERO_INSTANCE_HOOKS,
   ZERO_INSTANCE_MANAGER,
@@ -104,12 +104,12 @@ export class ZeroAuthRefresher {
   #givenUp = false;
 
   #destroyed = false;
-  #pendingTimer: ReturnType<typeof setTimeout> | undefined;
+  readonly #destroyAbort = new AbortController();
 
   constructor() {
     inject(DestroyRef).onDestroy(() => {
       this.#destroyed = true; // late resolutions checked against this
-      clearTimeout(this.#pendingTimer); // pending backoff cancelled
+      this.#destroyAbort.abort(); // pending backoff sleep resolves and its timer clears
     });
   }
 
@@ -171,7 +171,7 @@ export class ZeroAuthRefresher {
     if (refreshed.error) {
       // Transient → backoff, release latch, then RE-CHECK current state (if
       // the factory fixed auth meanwhile, no retry happens at all).
-      await this.#sleep(this.#backoffDelay(this.#attempts - 1));
+      await sleep(this.#backoffDelay(this.#attempts - 1), this.#destroyAbort.signal);
       this.#inflight = false;
       if (!this.#destroyed) {
         this.#recheck();
@@ -238,15 +238,5 @@ export class ZeroAuthRefresher {
     }
     this.#givenUp = true;
     tryCatch(() => this.#config.onGiveUp?.(state)); // user callback contained
-  }
-
-  #sleep(ms: number): Promise<void> {
-    return new Promise(resolve => {
-      this.#pendingTimer = setTimeout(resolve, ms);
-      // Destroy clears the timer; the abandoned promise is fine — every exit
-      // path after an await re-checks #destroyed. (Refinement allowed:
-      // resolve-on-abort via AbortSignal to avoid holding the promise in
-      // long-lived test envs.)
-    });
   }
 }
