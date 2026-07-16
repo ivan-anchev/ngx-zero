@@ -71,8 +71,9 @@ export class ZeroInstanceManager {
    * `undefined` until constructed and always on the server — the non-throwing
    * seam injectQuery/injectMutation consume.
    */
-  readonly instance: Signal<Zero | undefined>;
   readonly #currentInstance = signal<Zero | undefined>(undefined);
+
+  readonly instance: Signal<Zero | undefined> = this.#currentInstance.asReadonly();
 
   /** Public-facing read: throws at READ time until an instance exists (SSR contract). */
   readonly zeroOrThrow: Signal<Zero> = computed(() => {
@@ -133,8 +134,7 @@ export class ZeroInstanceManager {
   #started = false;
 
   constructor(source: ZeroInstanceSource | (() => ZeroInstanceSource)) {
-    this.#sourceFactory = typeof source === 'function' ? source : () => source;
-    this.instance = this.#currentInstance.asReadonly();
+    this.#sourceFactory = typeof source === 'function' ? source : () => source;    
     inject(DestroyRef).onDestroy(() => this.#destroy());
   }
 
@@ -151,8 +151,7 @@ export class ZeroInstanceManager {
     // Effects only flush with change detection; the first construction must be
     // synchronous so the instance exists before anything can read it. A factory
     // that throws here fails bootstrap loudly (broken options = programming error).
-    const firstSource = this.#reactiveSource();
-    untracked(() => this.#reconcile(firstSource));
+    this.#reconcile(this.#reactiveSource());
 
     // A factory that throws on a RERUN surfaces here instead: Angular reports
     // it, the previous instance stays current, and the next valid emission
@@ -161,6 +160,8 @@ export class ZeroInstanceManager {
       () => {
         const nextSource = this.#reactiveSource(); // tracked: every signal the factory read
         this.#rotationGeneration(); // tracked: rotation requests
+        // Untracked so the effect's dependencies stay exactly the two reads
+        // above — #reconcile reads #currentInstance, which it also writes.
         untracked(() => this.#reconcile(nextSource));
       },
       { injector: this.#environmentInjector },
