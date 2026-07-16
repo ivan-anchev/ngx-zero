@@ -172,10 +172,7 @@ export class ZeroAuthRefresher {
     if (failed) {
       // Transient → backoff, release latch, then RE-CHECK current state (if
       // the factory fixed auth meanwhile, no retry happens at all).
-      await this.#sleep(
-        this.#config.backoffMs?.(this.#attempts - 1) ??
-          Math.min(1000 * 2 ** (this.#attempts - 1), 30_000),
-      );
+      await this.#sleep(this.#backoffDelay(this.#attempts - 1));
       this.#inflight = false;
       if (!this.#destroyed) this.#recheck();
       return;
@@ -205,6 +202,20 @@ export class ZeroAuthRefresher {
     if (this.#manager.authEpoch() !== epoch) return;
     if (zero.connection.state.current.name !== 'needs-auth') return;
     void zero.connection.connect({ auth: token }).catch(() => {});
+  }
+
+  /**
+   * User `backoffMs` is contained: `#run` is fired via `void`, so a throw here
+   * would be an unhandled rejection AND would wedge the in-flight latch
+   * forever. Fall back to the default schedule instead.
+   */
+  #backoffDelay(attempt: number): number {
+    const fallback = Math.min(1000 * 2 ** attempt, 30_000);
+    try {
+      return this.#config.backoffMs?.(attempt) ?? fallback;
+    } catch {
+      return fallback;
+    }
   }
 
   #recheck(): void {

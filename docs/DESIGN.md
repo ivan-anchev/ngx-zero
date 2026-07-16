@@ -99,7 +99,7 @@ Lifecycle verdicts (diff of previous vs next factory output):
 | identical rerun / only fn identity changed | `noop` | strictly nothing (latest closures still captured) |
 | `auth` string→string | `connect` | `zero.connection.connect({auth})` in place; auth epoch bumped |
 | `auth` added/removed (login/logout), any other option change | `recreate` | `close()` (unawaited) + `new Zero(...)` |
-| `onClientStateNotFound` fires (no user callback, or user callback throws) | rotation | in-place recreate with same options — no `location.reload()` |
+| `onClientStateNotFound` fires (no user callback, or user callback throws) | rotation | in-place recreate with same options — no `location.reload()`; a late CSNF from a superseded (closing) instance is ignored — it never rotates the healthy replacement |
 | `{ zero }` external source | adopt | never closed by the library; features still attach |
 
 - **Equality stance**: function-valued options compare by *presence only* —
@@ -126,7 +126,10 @@ Lifecycle verdicts (diff of previous vs next factory output):
   internals); duplicate kinds are rejected at provide time. Features register
   `ZERO_INSTANCE_HOOKS` multi-providers: `onInstanceCreated` (owned
   constructions only — React `init` parity) and `onInstanceAttached` (every
-  current instance, returns a detach fn).
+  current instance, returns a detach fn). Hook throws (create, attach, detach)
+  are contained — reported via `ErrorHandler`, reconcile continues — so one
+  broken feature can never leave a closed predecessor visible or starve the
+  remaining hooks.
 - `close()` on `EnvironmentInjector` destroy; teardown never throws.
 - **Browser-only construction**: SSR is fully inert — `injectZero()` *call*
   succeeds on the server, the factory never runs, *reading* the signal throws
@@ -164,7 +167,8 @@ invariant:
   (upstream-native surface, no parallel observable). `'connected'` re-arms.
 - **Backoff**: rejection → `backoffMs(attempt)` (default `min(1000·2ⁿ, 30s)`,
   no jitter), then a re-check — if the options factory fixed auth meanwhile,
-  no retry happens at all.
+  no retry happens at all. A throwing user `backoffMs` is contained and falls
+  back to the default schedule (it must never wedge the in-flight latch).
 - **Stale-push safety**, three guards before `connect({auth})`: instance is
   still current, auth epoch unchanged, state still `'needs-auth'` — the
   reactive options factory wins every race by construction.

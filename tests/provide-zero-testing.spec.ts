@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import {
   createBuilder,
@@ -9,6 +10,7 @@ import {
   table,
   Zero,
   type Transaction,
+  type ZeroOptions,
 } from '@rocicorp/zero';
 import { injectZero } from '../src/inject-zero.js';
 import { provideZeroTesting } from '../src/provide-zero-testing.js';
@@ -90,6 +92,45 @@ describe('provideZeroTesting', () => {
     TestBed.inject(ZERO_INSTANCE_MANAGER);
     expect(harness.latest().options.kvStore).toBe('mem'); // defaulted
     expect(harness.latest().options.logLevel).toBe('debug'); // user wins
+  });
+
+  it('honors a custom kvStore StoreProvider (passed through by identity)', () => {
+    const harness = fakeZeroHarness();
+    const customStore = {
+      create: () => {
+        throw new Error('unused in this test');
+      },
+      drop: () => Promise.resolve(),
+    } as unknown as NonNullable<ZeroOptions['kvStore']>;
+    TestBed.configureTestingModule({
+      providers: [
+        provideTestChangeDetection(),
+        { provide: ZERO_CONSTRUCTOR, useValue: harness.construct },
+        provideZeroTesting({ schema, kvStore: customStore }),
+      ],
+    });
+    TestBed.inject(ZERO_INSTANCE_MANAGER);
+    expect(harness.latest().options.kvStore).toBe(customStore); // user wins over 'mem'
+  });
+
+  it('preserves factory reactivity: a signal change reconciles through the preset', () => {
+    const harness = fakeZeroHarness();
+    const userID = signal('u1');
+    TestBed.configureTestingModule({
+      providers: [
+        provideTestChangeDetection(),
+        { provide: ZERO_CONSTRUCTOR, useValue: harness.construct },
+        provideZeroTesting(() => ({ schema, userID: userID() })),
+      ],
+    });
+    TestBed.inject(ZERO_INSTANCE_MANAGER);
+    expect(harness.created).toHaveLength(1);
+
+    userID.set('u2');
+    TestBed.tick();
+    expect(harness.created).toHaveLength(2);
+    expect(harness.latest().options.userID).toBe('u2');
+    expect(harness.latest().options.cacheURL).toBeNull(); // forced keys survive reruns
   });
 
   it('rejects the forced keys at the type level', () => {

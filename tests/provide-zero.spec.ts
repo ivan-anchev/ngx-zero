@@ -350,6 +350,228 @@ describe('provideZero', () => {
     });
   });
 
+  it('factory throw at bootstrap fails loudly (broken options factory = programming error)', () => {
+    TestBed.configureTestingModule({
+      providers: [
+        provideTestChangeDetection(),
+        { provide: ZERO_CONSTRUCTOR, useValue: fakeZeroHarness().construct },
+        provideZero(() => {
+          throw new Error('factory boom');
+        }),
+      ],
+    });
+    expect(() => TestBed.inject(ZERO_INSTANCE_MANAGER)).toThrow(/factory boom/);
+  });
+
+  it('rapid a→b→c flips: each superseded instance closed once; late close settling never republishes', async () => {
+    const userID = signal('u1');
+    const { harness, manager } = setup(() => options({ userID: userID() }));
+    harness.created[0]!.closeBehavior = 'manual';
+
+    userID.set('u2');
+    TestBed.tick();
+    harness.created[1]!.closeBehavior = 'manual';
+    userID.set('u3');
+    TestBed.tick();
+
+    expect(harness.created).toHaveLength(3);
+    expect(harness.created.map(f => f.closeCalls)).toEqual([1, 1, 0]);
+    expect(manager.instance()).toBe(harness.created[2] as unknown as Zero);
+
+    // Unresolved close promises settle late, out of order — must never
+    // republish an old instance or double-close anything.
+    harness.created[1]!.settlePendingClose();
+    harness.created[0]!.settlePendingClose();
+    await Promise.resolve();
+    expect(manager.instance()).toBe(harness.created[2] as unknown as Zero);
+    expect(harness.created.map(f => f.closeCalls)).toEqual([1, 1, 0]);
+  });
+
+  it('CSNF rotation racing a factory recreate in the same flush → exactly one new instance', () => {
+    const userID = signal('u1');
+    const { harness, manager } = setup(() => options({ userID: userID() }));
+
+    harness.latest().options.onClientStateNotFound!(); // rotation requested…
+    userID.set('u2'); // …and a factory change lands before the same flush
+    TestBed.tick();
+
+    expect(harness.created).toHaveLength(2); // collapsed into ONE recreate
+    expect(manager.instance()).toBe(harness.created[1] as unknown as Zero);
+    expect(harness.created[1]!.options.userID).toBe('u2'); // newest options win
+  });
+
+  it('rejecting close during a routine recreate is swallowed — no throw, no ErrorHandler report', async () => {
+    const userID = signal('u1');
+    const { harness, errors } = setup(() => options({ userID: userID() }));
+    harness.created[0]!.closeBehavior = 'reject';
+
+    userID.set('u2');
+    expect(() => TestBed.tick()).not.toThrow();
+    await Promise.resolve();
+    await Promise.resolve(); // rejection settles → swallowed
+    expect(harness.created).toHaveLength(2);
+    expect(errors).toHaveLength(0);
+  });
+
+  describe('connect() rejection routing', () => {
+    it('reports via ErrorHandler when the instance is still current', async () => {
+      const auth = signal('t1');
+      const { harness, errors } = setup(() => options({ auth: auth() }));
+      let rejectConnect!: (e: unknown) => void;
+      harness.latest().connectResult = new Promise((_, rej) => (rejectConnect = rej));
+
+      auth.set('t2');
+      TestBed.tick(); // string→string → connect in place, promise pending
+      expect(harness.latest().connectCalls).toEqual([{ auth: 't2' }]);
+
+      rejectConnect(new Error('connect boom'));
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(errors.some(e => /connect boom/.test(String(e)))).toBe(true);
+    });
+
+    it('does NOT report when the instance was superseded before the rejection settled', async () => {
+      const auth = signal('t1');
+      const userID = signal('u1');
+      const { harness, errors } = setup(() => options({ auth: auth(), userID: userID() }));
+      let rejectConnect!: (e: unknown) => void;
+      harness.latest().connectResult = new Promise((_, rej) => (rejectConnect = rej));
+
+      auth.set('t2');
+      TestBed.tick(); // connect in place, promise pending
+      userID.set('u2');
+      TestBed.tick(); // recreate — the connecting instance is superseded
+
+      rejectConnect(new Error('connect boom'));
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(errors).toHaveLength(0);
+    });
+  });
+
+  it('wrapper invoked in the presence-flip transient window: batchViewUpdates stays synchronous', () => {
+    const withFns = signal(true);
+    const { harness } = setup(() =>
+      withFns()
+        ? options({ batchViewUpdates: apply => apply(), onUpdateNeeded: () => {} })
+        : options(),
+    );
+    const first = harness.created[0]!;
+    const wrappedBatch = first.options.batchViewUpdates!;
+    const wrappedUpdateNeeded = first.options.onUpdateNeeded!;
+
+    withFns.set(false); // presence flip → recreate; latest options lack the fns
+    TestBed.tick();
+    expect(harness.created).toHaveLength(2);
+
+    // Zero may still invoke the old instance's wrappers from a microtask
+    // mid-close: applyViewUpdates MUST run synchronously; others are inert.
+    let applied = false;
+    wrappedBatch(() => (applied = true));
+    expect(applied).toBe(true);
+    expect(() => wrappedUpdateNeeded({ type: 'NewClientGroup' })).not.toThrow();
+  });
+
+  it('re-emitting the same external instance is a strict no-op (no detach/re-attach, never closed)', () => {
+    const external = fakeZeroHarness().construct(options());
+    const events: string[] = [];
+    const feature = zeroFeature('auth-refresh', [
+      {
+        provide: ZERO_INSTANCE_HOOKS,
+        multi: true,
+        useValue: {
+          onInstanceAttached: () => {
+            events.push('attach');
+            return () => events.push('detach');
+          },
+        },
+      },
+    ]);
+    const source = signal<ZeroInstanceSource>({ zero: external });
+    setup(() => source(), feature);
+    expect(events).toEqual(['attach']);
+
+    source.set({ zero: external }); // NEW wrapper object, same instance
+    TestBed.tick();
+    expect(events).toEqual(['attach']);
+    expect((external as unknown as FakeZero).closeCalls).toBe(0);
+  });
+
+  describe('stale callbacks from superseded instances', () => {
+    it('stale CSNF from a superseded instance does not rotate its replacement', () => {
+      const { harness, manager } = setup(options());
+      const staleCsnf = harness.latest().options.onClientStateNotFound;
+      expect(staleCsnf).toBeTypeOf('function');
+
+      staleCsnf!(); // legitimate fire → rotation
+      TestBed.tick();
+      expect(harness.created).toHaveLength(2);
+
+      // The closed predecessor fires again, late (e.g. a server message that was
+      // already in flight when close() started). Must NOT rotate the replacement.
+      staleCsnf!();
+      TestBed.tick();
+      expect(harness.created).toHaveLength(2);
+      expect(manager.instance()).toBe(harness.created[1] as unknown as Zero);
+    });
+  });
+
+  describe('throwing feature hooks', () => {
+    it('throwing withInit at bootstrap is contained: reported, instance still published', () => {
+      const { harness, manager, errors } = setup(
+        options(),
+        withInit(() => {
+          throw new Error('init boom');
+        }),
+      );
+      expect(errors.some(e => /init boom/.test(String(e)))).toBe(true);
+      expect(harness.created).toHaveLength(1);
+      expect(manager.instance()).toBe(harness.latest() as unknown as Zero);
+    });
+
+    it('withInit throw during rotation never leaves the closed predecessor visible', () => {
+      const userID = signal('u1');
+      let boom = false;
+      const { harness, manager, errors } = setup(
+        () => options({ userID: userID() }),
+        withInit(() => {
+          if (boom) throw new Error('init boom');
+        }),
+      );
+      boom = true;
+      userID.set('u2');
+      expect(() => TestBed.tick()).not.toThrow();
+      expect(harness.created).toHaveLength(2);
+      expect(manager.instance()).toBe(harness.created[1] as unknown as Zero);
+      expect(harness.created[0]!.closed).toBe(true); // predecessor closed AND hidden
+      expect(errors.some(e => /init boom/.test(String(e)))).toBe(true);
+    });
+
+    it('throwing onInstanceAttached is contained and later hooks still attach', () => {
+      const attached: string[] = [];
+      const feature = zeroFeature('auth-refresh', [
+        {
+          provide: ZERO_INSTANCE_HOOKS,
+          multi: true,
+          useValue: {
+            onInstanceAttached: () => {
+              throw new Error('attach boom');
+            },
+          },
+        },
+        {
+          provide: ZERO_INSTANCE_HOOKS,
+          multi: true,
+          useValue: { onInstanceAttached: () => void attached.push('second') },
+        },
+      ]);
+      const { harness, manager, errors } = setup(options(), feature);
+      expect(errors.some(e => /attach boom/.test(String(e)))).toBe(true);
+      expect(attached).toEqual(['second']);
+      expect(manager.instance()).toBe(harness.latest() as unknown as Zero);
+    });
+  });
+
   it('feature hooks attach to every current instance and detach before replacement', () => {
     const events: string[] = [];
     const userID = signal('u1');

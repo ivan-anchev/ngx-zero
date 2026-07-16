@@ -226,9 +226,13 @@ export class ZeroInstanceManager {
     // same-storage overlap.
     this.#disposeCurrent();
 
+    // Filled right after construction so the CSNF wrapper can tell "my
+    // instance is still current" from "I am a late fire from a superseded,
+    // closing instance" (close() is unawaited — callbacks can straggle).
+    const owner: { zero?: Zero } = {};
     let zero: Zero;
     try {
-      zero = this.#construct(this.#toConstructorOptions(opts));
+      zero = this.#construct(this.#toConstructorOptions(opts, owner));
     } catch (err) {
       // Never leave the already-closed predecessor visible.
       this.#errorHandler.handleError(err);
@@ -237,11 +241,20 @@ export class ZeroInstanceManager {
       this.#rotationPending = false;
       return; // next valid factory emission recovers
     }
+    owner.zero = zero;
     this.#owned = true;
     this.#authEpochCounter++;
     this.#rotationPending = false; // any recreate satisfies a pending rotation
 
-    for (const h of this.#hooks) h.onInstanceCreated?.(zero); // withInit
+    for (const h of this.#hooks) {
+      // withInit. Contained: a throwing init is a feature bug, not a reason to
+      // leave the already-closed predecessor visible in the signal.
+      try {
+        h.onInstanceCreated?.(zero);
+      } catch (err) {
+        this.#errorHandler.handleError(err);
+      }
+    }
     this.#instance.set(zero);
     this.#attach(zero);
   }
@@ -262,8 +275,14 @@ export class ZeroInstanceManager {
 
   #attach(zero: Zero): void {
     for (const h of this.#hooks) {
-      const detach = h.onInstanceAttached?.(zero);
-      if (detach) this.#detach.push(detach);
+      // Contained like detach: one broken feature must not break reconcile or
+      // starve the remaining hooks.
+      try {
+        const detach = h.onInstanceAttached?.(zero);
+        if (detach) this.#detach.push(detach);
+      } catch (err) {
+        this.#errorHandler.handleError(err);
+      }
     }
   }
 
@@ -274,7 +293,7 @@ export class ZeroInstanceManager {
    * throwing → guarded rotation; no `location.reload()` — Zero's default only
    * applies when the option is absent, and ours never is).
    */
-  #toConstructorOptions(opts: ZeroOptions): ZeroOptions {
+  #toConstructorOptions(opts: ZeroOptions, owner: { zero?: Zero }): ZeroOptions {
     const out: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(opts)) {
       if (key === 'onClientStateNotFound') continue;
@@ -283,6 +302,10 @@ export class ZeroInstanceManager {
     out['onClientStateNotFound'] = () => {
       // Fires from Zero internals, outside any zone — only a signal write below.
       if (this.#destroyed || this.#rotationPending) return;
+      // Stale-instance guard: a superseded instance's late CSNF (close() is
+      // unawaited) must not rotate its healthy replacement. `owner.zero` is
+      // only unset while `new Zero(...)` itself is still running.
+      if (owner.zero !== undefined && this.#instance() !== owner.zero) return;
       const user = this.#latestOptions()?.onClientStateNotFound;
       if (user) {
         try {
