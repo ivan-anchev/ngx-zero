@@ -103,14 +103,16 @@ export class ZeroAuthRefresher {
    */
   #givenUp = false;
 
-  #destroyed = false;
+  /**
+   * Aborted at destroy: a pending backoff sleep resolves and its timer clears.
+   * No destroyed flag beyond this — after destroy the state subscription is
+   * detached and the manager's instance signal is `undefined`, so every late
+   * async path already dead-ends on the `zero === undefined` guards.
+   */
   readonly #destroyAbort = new AbortController();
 
   constructor() {
-    inject(DestroyRef).onDestroy(() => {
-      this.#destroyed = true; // late resolutions checked against this
-      this.#destroyAbort.abort(); // pending backoff sleep resolves and its timer clears
-    });
+    inject(DestroyRef).onDestroy(() => this.#destroyAbort.abort());
   }
 
   /** Hook entry: called by the manager for each instance; returns detach. */
@@ -143,7 +145,7 @@ export class ZeroAuthRefresher {
   }
 
   #kick(state: NeedsAuthState): void {
-    if (this.#destroyed || this.#givenUp || this.#inflight) {
+    if (this.#givenUp || this.#inflight) {
       return;
     }
     if (this.#attempts >= (this.#config.maxAttempts ?? 3)) {
@@ -163,19 +165,12 @@ export class ZeroAuthRefresher {
 
     const refreshed = await tryCatch(this.#config.refreshFn);
 
-    if (this.#destroyed) {
-      this.#inflight = false;
-      return;
-    }
-
     if (refreshed.error) {
       // Transient → backoff, release latch, then RE-CHECK current state (if
       // the factory fixed auth meanwhile, no retry happens at all).
       await sleep(this.#backoffDelay(this.#attempts - 1), this.#destroyAbort.signal);
       this.#inflight = false;
-      if (!this.#destroyed) {
-        this.#recheck();
-      }
+      this.#recheck();
       return;
     }
 
@@ -199,7 +194,7 @@ export class ZeroAuthRefresher {
    */
   #push(token: string, epoch: number): void {
     const zero = this.#manager.instance();
-    if (this.#destroyed || zero === undefined || zero.closed) {
+    if (zero === undefined || zero.closed) {
       return;
     }
     if (this.#manager.authEpoch() !== epoch) {
@@ -223,7 +218,7 @@ export class ZeroAuthRefresher {
 
   #recheck(): void {
     const zero = this.#manager.instance();
-    if (this.#destroyed || zero === undefined || zero.closed) {
+    if (zero === undefined || zero.closed) {
       return;
     }
     const state = zero.connection.state.current;
