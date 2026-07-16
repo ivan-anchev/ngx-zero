@@ -168,7 +168,7 @@ export class ZeroAuthRefresher {
       return;
     }
 
-    if (!refreshed.ok) {
+    if (refreshed.error) {
       // Transient → backoff, release latch, then RE-CHECK current state (if
       // the factory fixed auth meanwhile, no retry happens at all).
       await this.#sleep(this.#backoffDelay(this.#attempts - 1));
@@ -181,11 +181,11 @@ export class ZeroAuthRefresher {
 
     this.#inflight = false;
 
-    if (typeof refreshed.value === 'string') {
+    if (typeof refreshed.result === 'string') {
       // "Refresh produced a token" ≠ "server accepted it". If rejected,
       // needs-auth fires again → next kick → #attempts still counting →
       // converges to give-up.
-      this.#push(refreshed.value, epoch);
+      this.#push(refreshed.result, epoch);
       return;
     }
     this.#giveUp(state); // null-like: no token exists — retrying can't mint a session
@@ -218,7 +218,7 @@ export class ZeroAuthRefresher {
    */
   #backoffDelay(attempt: number): number {
     const delay = tryCatch(() => this.#config.backoffMs?.(attempt));
-    return delay.ok ? (delay.value ?? expBackoffMs(attempt)) : expBackoffMs(attempt);
+    return delay.error ? expBackoffMs(attempt) : (delay.result ?? expBackoffMs(attempt));
   }
 
   #recheck(): void {

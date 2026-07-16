@@ -1,15 +1,21 @@
 /** Shared pure helpers. No Angular imports; Zero types only. */
 import type { ZeroOptions } from '@rocicorp/zero';
 
-/** Outcome of a `tryCatch` call: narrow on `ok` to reach `value` or `error`. */
-export type Result<T> = { ok: true; value: T } | { ok: false; error: unknown };
+/**
+ * Outcome of a `tryCatch` call. Checking `error` narrows: when it is defined,
+ * `result` is `never`, and vice versa.
+ */
+export type Result<T> = { result: T; error?: never } | { result?: never; error: Error };
 
 /**
  * Runs a function and returns its outcome as a `Result` instead of throwing.
- * The value type is inferred from the function; an async function (or one
+ * The result type is inferred from the function; an async function (or one
  * returning a promise) yields a `Promise<Result<T>>` whose rejection is
- * captured the same way — `await tryCatch(...)` never throws.
+ * captured the same way — `await tryCatch(...)` never throws. Non-Error throws
+ * are wrapped in an `Error` (original value on `cause`) so `error` stays a
+ * narrowable, concrete type.
  */
+export function tryCatch(fn: () => never): Result<never>;
 export function tryCatch<T>(fn: () => Promise<T>): Promise<Result<T>>;
 export function tryCatch<T>(fn: () => T): Result<T>;
 export function tryCatch<T>(fn: () => T | Promise<T>): Result<T> | Promise<Result<T>> {
@@ -17,14 +23,18 @@ export function tryCatch<T>(fn: () => T | Promise<T>): Result<T> | Promise<Resul
     const value = fn();
     if (isThenable(value)) {
       return Promise.resolve(value as Promise<T>).then(
-        resolved => ({ ok: true, value: resolved }),
-        (error: unknown) => ({ ok: false, error }),
+        result => ({ result }),
+        (thrown: unknown) => ({ error: toError(thrown) }),
       );
     }
-    return { ok: true, value: value as T };
-  } catch (error) {
-    return { ok: false, error };
+    return { result: value as T };
+  } catch (thrown) {
+    return { error: toError(thrown) };
   }
+}
+
+function toError(thrown: unknown): Error {
+  return thrown instanceof Error ? thrown : new Error(String(thrown), { cause: thrown });
 }
 
 /**

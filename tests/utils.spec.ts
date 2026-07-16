@@ -2,46 +2,48 @@ import { describe, expect, expectTypeOf, it } from 'vitest';
 import { expBackoffMs, tryCatch, type Result } from '../src/utils.js';
 
 describe('tryCatch', () => {
-  it('returns ok with the value for a sync function', () => {
-    const result = tryCatch(() => 42);
-    expect(result).toEqual({ ok: true, value: 42 });
+  it('returns the result for a sync function', () => {
+    expect(tryCatch(() => 42)).toEqual({ result: 42 });
   });
 
   it('returns the thrown error for a sync function', () => {
     const boom = new Error('boom');
-    const result = tryCatch(() => {
+    const outcome = tryCatch(() => {
       throw boom;
     });
-    expect(result).toEqual({ ok: false, error: boom });
+    expect(outcome.error).toBe(boom);
+    expect(outcome.result).toBeUndefined();
   });
 
-  it('resolves ok with the value for an async function', async () => {
-    const result = await tryCatch(async () => 'token');
-    expect(result).toEqual({ ok: true, value: 'token' });
+  it('resolves with the result for an async function', async () => {
+    expect(await tryCatch(async () => 'token')).toEqual({ result: 'token' });
   });
 
   it('resolves (never rejects) with the error for a rejecting async function', async () => {
     const boom = new Error('boom');
-    const result = await tryCatch(async () => {
+    const outcome = await tryCatch(async () => {
       throw boom;
     });
-    expect(result).toEqual({ ok: false, error: boom });
+    expect(outcome.error).toBe(boom);
   });
 
-  it('captures non-Error throws as-is', () => {
-    const result = tryCatch(() => {
+  it('wraps a non-Error throw, preserving the original value on cause', () => {
+    const outcome = tryCatch(() => {
       throw 'plain string';
     });
-    expect(result).toEqual({ ok: false, error: 'plain string' });
+    expect(outcome.error).toBeInstanceOf(Error);
+    expect(outcome.error?.message).toBe('plain string');
+    expect(outcome.error?.cause).toBe('plain string');
   });
 
-  it('infers the value type and narrows on ok', () => {
+  it('infers the result type and narrows on error', () => {
     const sync = tryCatch(() => 42);
     expectTypeOf(sync).toEqualTypeOf<Result<number>>();
-    if (sync.ok) {
-      expectTypeOf(sync.value).toEqualTypeOf<number>();
+    if (sync.error) {
+      expectTypeOf(sync.error).toEqualTypeOf<Error>();
+      expectTypeOf(sync.result).toEqualTypeOf<undefined>();
     } else {
-      expectTypeOf(sync.error).toEqualTypeOf<unknown>();
+      expectTypeOf(sync.result).toEqualTypeOf<number>();
     }
 
     const async = tryCatch(async () => 'token');

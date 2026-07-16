@@ -219,7 +219,7 @@ export class ZeroInstanceManager {
     const constructed = tryCatch(() =>
       this.#constructZero(this.#prepareConstructorOptions(options, instanceRef)),
     );
-    if (!constructed.ok) {
+    if (constructed.error) {
       // Never leave the already-closed predecessor visible in the signal.
       this.#errorHandler.handleError(constructed.error);
       this.#currentInstance.set(undefined);
@@ -227,7 +227,7 @@ export class ZeroInstanceManager {
       this.#rotationPending = false;
       return; // the next valid factory emission recovers
     }
-    const zero = constructed.value;
+    const zero = constructed.result;
     instanceRef.zero = zero;
     this.#ownsInstance = true;
     this.#authEpochCounter++;
@@ -236,7 +236,7 @@ export class ZeroInstanceManager {
     for (const hook of this.#featureHooks) {
       // Contained: a throwing init hook must not block publishing the instance.
       const created = tryCatch(() => hook.onInstanceCreated?.(zero)); // withInit
-      if (!created.ok) {
+      if (created.error) {
         this.#errorHandler.handleError(created.error);
       }
     }
@@ -258,10 +258,10 @@ export class ZeroInstanceManager {
     for (const hook of this.#featureHooks) {
       // Contained: one broken feature must not starve the remaining hooks.
       const attached = tryCatch(() => hook.onInstanceAttached?.(zero));
-      if (!attached.ok) {
+      if (attached.error) {
         this.#errorHandler.handleError(attached.error);
-      } else if (attached.value) {
-        this.#detachCallbacks.push(attached.value);
+      } else if (attached.result) {
+        this.#detachCallbacks.push(attached.result);
       }
     }
   }
@@ -302,7 +302,7 @@ export class ZeroInstanceManager {
       const userCallback = this.#currentOptions()?.onClientStateNotFound;
       // A throwing user callback falls through to rotation — the client is
       // closed either way.
-      if (userCallback && tryCatch(userCallback).ok) {
+      if (userCallback && !tryCatch(userCallback).error) {
         return;
       }
       this.#rotationPending = true;
