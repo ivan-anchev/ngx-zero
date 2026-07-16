@@ -2,22 +2,17 @@
  * The equality stance for reconciling `ZeroOptions`, isolated and pure
  * (types-only imports; no Angular or Zero runtime).
  *
- * - Function-valued entries compare by PRESENCE only (fn↔fn equal regardless
- *   of identity; fn↔absent → recreate, because presence toggles Zero's
- *   built-in defaults, e.g. omitted `onUpdateNeeded` means `location.reload()`).
- *   Ignoring identity is sound because instances never capture user functions,
- *   only stable wrappers that delegate to the latest factory output.
- * - Non-function values: `Object.is` + one-level shallow fallback for plain
- *   objects/arrays (kills the inline `queryHeaders: {…}` / `context: {…}`
- *   literal footgun; deliberately not recursive).
- * - `auth` never participates in the recreate diff — 3-way semantics of its own.
- * - `onClientStateNotFound` never participates at all (the library always
- *   wraps it).
- * - No hardcoded `ZeroOptions` key list — structural over the union of own
- *   keys, so new upstream options participate automatically; a canary test is
- *   the tripwire.
+ * The policy, top to bottom:
+ * 1. Every option except `auth` and `onClientStateNotFound` is compared with
+ *    `optionEquals`; any difference → 'recreate'.
+ * 2. `auth` alone decides between 'connect' and 'noop' (`diffAuth`).
+ *
+ * No hardcoded `ZeroOptions` key list — the diff walks the union of both
+ * objects' own keys, so new upstream options participate automatically; the
+ * canary test in tests/options-diff.spec.ts is the tripwire.
  */
 import type { Zero, ZeroOptions } from '@rocicorp/zero';
+import { valueEquals } from './utils/equality.js';
 
 /** `{ zero }` — externally-owned instance mode: adopted as-is, never closed. */
 export interface ExternalZeroSource {
@@ -34,58 +29,63 @@ export function isExternalSource(s: ZeroInstanceSource): s is ExternalZeroSource
 export type ZeroReconcileVerdict = 'noop' | 'connect' | 'recreate';
 
 export function diffZeroOptions(prev: ZeroOptions, next: ZeroOptions): ZeroReconcileVerdict {
-  // Union of keys: "key added" and "key removed" both seen. Absent vs explicit
-  // undefined compare equal — matches Zero's `?: T | undefined` option style.
-  const keys = new Set([...Object.keys(prev), ...Object.keys(next)]);
-  keys.delete('auth'); // 3-way semantics below
-  keys.delete('onClientStateNotFound'); // always wrapped; never diffed
-
-  for (const key of keys) {
+  for (const key of diffableKeys(prev, next)) {
     const a = (prev as Record<string, unknown>)[key];
     const b = (next as Record<string, unknown>)[key];
-    const aFn = typeof a === 'function';
-    const bFn = typeof b === 'function';
-    if (aFn || bFn) {
-      if (aFn !== bFn) return 'recreate'; // presence flip
-      continue; // identity ignored (stable wrappers)
+    if (!optionEquals(a, b)) {
+      return 'recreate';
     }
-    if (!valueEquals(a, b)) return 'recreate';
   }
-
-  // auth: the React provider's exact semantics.
-  const prevHas = typeof prev.auth === 'string';
-  const nextHas = typeof next.auth === 'string';
-  if (prevHas !== nextHas) return 'recreate'; // login/logout boundary
-  if (nextHas && !Object.is(prev.auth, next.auth)) return 'connect'; // rotation in place
-  return 'noop';
+  return diffAuth(prev.auth, next.auth);
 }
 
 /**
- * `Object.is` + one-level shallow for plain arrays/objects (proto
- * `Object.prototype` or `null`). Class-prototyped values (StoreProvider,
- * LogSink) stay identity-compared.
+ * Union of both objects' own keys — "key added" and "key removed" are both
+ * seen, and absent vs explicit `undefined` compare equal (matches Zero's
+ * `?: T | undefined` option style) — minus the two keys with policies of
+ * their own: `auth` (3-way, see `diffAuth`) and `onClientStateNotFound`
+ * (always wrapped by the library; never diffed).
  */
-export function valueEquals(a: unknown, b: unknown): boolean {
-  if (Object.is(a, b)) return true;
-  if (Array.isArray(a) && Array.isArray(b)) {
-    if (a.length !== b.length) return false;
-    return a.every((v, i) => Object.is(v, b[i]));
-  }
-  if (isPlainObject(a) && isPlainObject(b)) {
-    const ka = Object.keys(a);
-    const kb = Object.keys(b);
-    if (ka.length !== kb.length) return false;
-    return ka.every(
-      k =>
-        Object.prototype.hasOwnProperty.call(b, k) &&
-        Object.is(a[k], b[k]),
-    );
-  }
-  return false;
+function diffableKeys(prev: ZeroOptions, next: ZeroOptions): Set<string> {
+  const keys = new Set([...Object.keys(prev), ...Object.keys(next)]);
+  keys.delete('auth');
+  keys.delete('onClientStateNotFound');
+  return keys;
 }
 
-function isPlainObject(v: unknown): v is Record<string, unknown> {
-  if (v === null || typeof v !== 'object') return false;
-  const proto = Object.getPrototypeOf(v);
-  return proto === Object.prototype || proto === null;
+/**
+ * Function-valued entries compare by PRESENCE only: fn↔fn is equal regardless
+ * of identity (sound because instances never capture user functions, only
+ * stable wrappers delegating to the latest factory output), while fn↔absent
+ * differs (presence toggles Zero's built-in defaults, e.g. omitted
+ * `onUpdateNeeded` means `location.reload()`). Everything else compares with
+ * `valueEquals` — `Object.is` plus one-level shallow for plain literals,
+ * which kills the inline `queryHeaders: {…}` / `context: {…}` footgun.
+ */
+function optionEquals(a: unknown, b: unknown): boolean {
+  const aIsFn = typeof a === 'function';
+  const bIsFn = typeof b === 'function';
+  if (aIsFn || bIsFn) {
+    return aIsFn === bIsFn;
+  }
+  return valueEquals(a, b);
+}
+
+/**
+ * `auth` 3-way — the React provider's exact semantics: crossing the
+ * login/logout boundary (string ↔ non-string) recreates the instance; a
+ * string→string change rotates the token in place via `connect`; anything
+ * else (same token, or non-string → non-string like `null` → `undefined`)
+ * is a no-op.
+ */
+function diffAuth(prev: ZeroOptions['auth'], next: ZeroOptions['auth']): ZeroReconcileVerdict {
+  const prevIsString = typeof prev === 'string';
+  const nextIsString = typeof next === 'string';
+  if (prevIsString !== nextIsString) {
+    return 'recreate';
+  }
+  if (nextIsString && !Object.is(prev, next)) {
+    return 'connect';
+  }
+  return 'noop';
 }

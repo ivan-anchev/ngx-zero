@@ -3,9 +3,9 @@ import type { ZeroOptions } from '@rocicorp/zero';
 import {
   diffZeroOptions,
   isExternalSource,
-  valueEquals,
   type ZeroReconcileVerdict,
 } from '../src/options-diff.js';
+import { valueEquals } from '../src/utils/equality.js';
 
 const base = (over: Partial<ZeroOptions> = {}): ZeroOptions =>
   ({ schema: SCHEMA, cacheURL: 'http://cache', userID: 'u1', ...over }) as ZeroOptions;

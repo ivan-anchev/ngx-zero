@@ -15,7 +15,9 @@ export interface InjectZeroOptions {
  * augmentation — no type params declared here.
  */
 export function injectZero(options?: InjectZeroOptions): Signal<Zero> {
-  if (options?.injector === undefined) assertInInjectionContext(injectZero);
+  if (options?.injector === undefined) {
+    assertInInjectionContext(injectZero);
+  }
   const injector = options?.injector ?? inject(Injector);
 
   const manager = injector.get(ZERO_INSTANCE_MANAGER, null, { optional: true });

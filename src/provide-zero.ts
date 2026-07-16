@@ -6,8 +6,7 @@ import {
 } from '@angular/core';
 import { ZERO_INSTANCE_MANAGER, ZeroInstanceManager } from './instance-manager.js';
 import type { ZeroInstanceSource } from './options-diff.js';
-import type { ZeroFeature } from './features.js';
-import { ngxZeroError } from './errors.js';
+import { assertUniqueFeatureKinds, type ZeroFeature } from './features.js';
 
 /**
  * Provides the library-owned Zero instance for an environment injector.
@@ -22,14 +21,7 @@ export function provideZero(
   source: ZeroInstanceSource | (() => ZeroInstanceSource),
   ...features: ZeroFeature[]
 ): EnvironmentProviders {
-  // Duplicate-feature detection at provide time (config errors beat runtime surprises).
-  const kinds = new Set<string>();
-  for (const f of features) {
-    if (kinds.has(f.ɵkind)) {
-      throw ngxZeroError(`provideZero(): duplicate feature "${f.ɵkind}".`);
-    }
-    kinds.add(f.ɵkind);
-  }
+  assertUniqueFeatureKinds(features);
 
   return makeEnvironmentProviders([
     // Feature providers FIRST so their multi-providers exist before the manager injects them.

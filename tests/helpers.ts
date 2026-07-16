@@ -41,7 +41,9 @@ export class FakeConnectionStateSource {
 
   emit(state: ConnectionState): void {
     this.current = state;
-    for (const listener of [...this.#listeners]) listener(state);
+    for (const listener of [...this.#listeners]) {
+      listener(state);
+    }
   }
 }
 
@@ -111,7 +113,9 @@ export function fakeZeroHarness(): FakeZeroHarness {
     construct,
     latest: () => {
       const fake = created[created.length - 1];
-      if (fake === undefined) throw new Error('no FakeZero constructed yet');
+      if (fake === undefined) {
+        throw new Error('no FakeZero constructed yet');
+      }
       return fake;
     },
   };

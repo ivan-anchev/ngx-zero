@@ -235,7 +235,9 @@ describe('provideZero', () => {
   it('factory throw on rerun → previous instance retained; recovers on next valid emission', () => {
     const mode = signal<'ok' | 'throw' | 'ok2'>('ok');
     const { harness, manager } = setup(() => {
-      if (mode() === 'throw') throw new Error('factory boom');
+      if (mode() === 'throw') {
+        throw new Error('factory boom');
+      }
       return options({ userID: mode() });
     });
     const first = harness.latest();
@@ -532,7 +534,9 @@ describe('provideZero', () => {
       const { harness, manager, errors } = setup(
         () => options({ userID: userID() }),
         withInit(() => {
-          if (boom) throw new Error('init boom');
+          if (boom) {
+            throw new Error('init boom');
+          }
         }),
       );
       boom = true;

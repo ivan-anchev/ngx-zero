@@ -164,7 +164,9 @@ export class ZeroInstanceManager {
       throw ngxZeroError('provideZero() was provided more than once in the same environment.');
     }
     this.#started = true;
-    if (!this.browser) return; // SSR: fully inert
+    if (!this.browser) {
+      return; // SSR: fully inert
+    }
 
     const first = this.#options();
     untracked(() => this.#apply(first));
@@ -184,7 +186,9 @@ export class ZeroInstanceManager {
 
   /** THE single reconcile funnel — never more than one reconcile in flight. */
   #apply(next: ZeroInstanceSource): void {
-    if (this.#destroyed) return;
+    if (this.#destroyed) {
+      return;
+    }
 
     const prev = this.#latest;
     this.#latest = next; // wrappers now see the newest closures — even on no-op
@@ -194,7 +198,9 @@ export class ZeroInstanceManager {
     if (isExternalSource(next)) {
       this.#rotationPending = false;
       const current = this.#instance();
-      if (current === next.zero) return;
+      if (current === next.zero) {
+        return;
+      }
       this.#disposeCurrent(); // closes only if owned
       this.#owned = false;
       this.#instance.set(next.zero);
@@ -220,7 +226,9 @@ export class ZeroInstanceManager {
         this.#authEpochCounter++;
         void current.connection.connect({ auth: next.auth as string }).catch(err => {
           // Report instead of a bare void — only if still current.
-          if (this.#instance() === current) this.#errorHandler.handleError(err);
+          if (this.#instance() === current) {
+            this.#errorHandler.handleError(err);
+          }
         });
         break;
       }
@@ -285,7 +293,9 @@ export class ZeroInstanceManager {
       // starve the remaining hooks.
       try {
         const detach = h.onInstanceAttached?.(zero);
-        if (detach) this.#detach.push(detach);
+        if (detach) {
+          this.#detach.push(detach);
+        }
       } catch (err) {
         this.#errorHandler.handleError(err);
       }
@@ -300,7 +310,9 @@ export class ZeroInstanceManager {
   #toConstructorOptions(opts: ZeroOptions, owner: InstanceBox): ZeroOptions {
     const out: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(opts)) {
-      if (key === 'onClientStateNotFound') continue;
+      if (key === 'onClientStateNotFound') {
+        continue;
+      }
       out[key] = typeof value === 'function' ? this.#wrapFunctionOption(key) : value;
     }
     out['onClientStateNotFound'] = this.#wrapClientStateNotFound(owner);
@@ -315,11 +327,15 @@ export class ZeroInstanceManager {
   #wrapClientStateNotFound(owner: InstanceBox): () => void {
     return () => {
       // Fires from Zero internals, outside any zone — only a signal write below.
-      if (this.#destroyed || this.#rotationPending) return;
+      if (this.#destroyed || this.#rotationPending) {
+        return;
+      }
       // Stale-instance guard: a superseded instance's late CSNF (close() is
       // unawaited) must not rotate its healthy replacement. `owner.zero` is
       // only unset while `new Zero(...)` itself is still running.
-      if (owner.zero !== undefined && this.#instance() !== owner.zero) return;
+      if (owner.zero !== undefined && this.#instance() !== owner.zero) {
+        return;
+      }
       const user = this.#latestOptions()?.onClientStateNotFound;
       if (user) {
         try {
@@ -339,10 +355,14 @@ export class ZeroInstanceManager {
       const fn = this.#latestOptions()?.[key as keyof ZeroOptions] as
         | ((...a: unknown[]) => unknown)
         | undefined;
-      if (typeof fn === 'function') return fn(...args);
+      if (typeof fn === 'function') {
+        return fn(...args);
+      }
       // Transient window (presence flip → recreate on the same sync reconcile,
       // but Zero may call from a microtask in between). Per-key safe fallbacks:
-      if (key === 'batchViewUpdates') (args[0] as () => void)(); // MUST stay synchronous
+      if (key === 'batchViewUpdates') {
+        (args[0] as () => void)(); // MUST stay synchronous
+      }
       return undefined;
     };
   }
@@ -358,7 +378,9 @@ export class ZeroInstanceManager {
    * (documented). `#destroyed` makes every late async straggler a no-op.
    */
   #destroy(): void {
-    if (this.#destroyed) return;
+    if (this.#destroyed) {
+      return;
+    }
     this.#destroyed = true;
     this.#disposeCurrent();
     this.#instance.set(undefined);

@@ -1,6 +1,7 @@
 import { DestroyRef, inject, InjectionToken, Injector } from '@angular/core';
 import type { ConnectionState, Zero } from '@rocicorp/zero';
 import { zeroFeature, type ZeroFeature } from './features.js';
+import { expBackoffMs } from './utils/backoff.js';
 import {
   ZERO_INSTANCE_HOOKS,
   ZERO_INSTANCE_MANAGER,
@@ -134,13 +135,17 @@ export class ZeroAuthRefresher {
     // needs-auth at attach (expired token at construction; rotation during
     // needs-auth) must be checked explicitly or the feature deadlocks.
     const current = zero.connection.state.current;
-    if (current.name === 'needs-auth') this.#kick(current);
+    if (current.name === 'needs-auth') {
+      this.#kick(current);
+    }
 
     return unsubscribe;
   }
 
   #kick(state: NeedsAuthState): void {
-    if (this.#destroyed || this.#givenUp || this.#inflight) return;
+    if (this.#destroyed || this.#givenUp || this.#inflight) {
+      return;
+    }
     if (this.#attempts >= (this.#config.maxAttempts ?? 3)) {
       this.#giveUp(state);
       return;
@@ -174,7 +179,9 @@ export class ZeroAuthRefresher {
       // the factory fixed auth meanwhile, no retry happens at all).
       await this.#sleep(this.#backoffDelay(this.#attempts - 1));
       this.#inflight = false;
-      if (!this.#destroyed) this.#recheck();
+      if (!this.#destroyed) {
+        this.#recheck();
+      }
       return;
     }
 
@@ -198,9 +205,15 @@ export class ZeroAuthRefresher {
    */
   #push(token: string, epoch: number): void {
     const zero = this.#manager.instance();
-    if (this.#destroyed || zero === undefined || zero.closed) return;
-    if (this.#manager.authEpoch() !== epoch) return;
-    if (zero.connection.state.current.name !== 'needs-auth') return;
+    if (this.#destroyed || zero === undefined || zero.closed) {
+      return;
+    }
+    if (this.#manager.authEpoch() !== epoch) {
+      return;
+    }
+    if (zero.connection.state.current.name !== 'needs-auth') {
+      return;
+    }
     void zero.connection.connect({ auth: token }).catch(() => {});
   }
 
@@ -210,23 +223,28 @@ export class ZeroAuthRefresher {
    * forever. Fall back to the default schedule instead.
    */
   #backoffDelay(attempt: number): number {
-    const fallback = Math.min(1000 * 2 ** attempt, 30_000);
     try {
-      return this.#config.backoffMs?.(attempt) ?? fallback;
+      return this.#config.backoffMs?.(attempt) ?? expBackoffMs(attempt);
     } catch {
-      return fallback;
+      return expBackoffMs(attempt);
     }
   }
 
   #recheck(): void {
     const zero = this.#manager.instance();
-    if (this.#destroyed || zero === undefined || zero.closed) return;
+    if (this.#destroyed || zero === undefined || zero.closed) {
+      return;
+    }
     const state = zero.connection.state.current;
-    if (state.name === 'needs-auth') this.#kick(state);
+    if (state.name === 'needs-auth') {
+      this.#kick(state);
+    }
   }
 
   #giveUp(state: NeedsAuthState): void {
-    if (this.#givenUp) return;
+    if (this.#givenUp) {
+      return;
+    }
     this.#givenUp = true;
     try {
       this.#config.onGiveUp?.(state);

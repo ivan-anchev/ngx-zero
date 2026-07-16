@@ -1,4 +1,5 @@
 import type { Provider } from '@angular/core';
+import { ngxZeroError } from './errors.js';
 
 /** Closed union so duplicate detection stays honest; one-line change per new feature. */
 export type ZeroFeatureKind = 'init' | 'auth-refresh';
@@ -18,4 +19,15 @@ export function zeroFeature<K extends ZeroFeatureKind>(
   providers: readonly Provider[],
 ): ZeroFeature<K> {
   return { ɵkind: kind, ɵproviders: providers };
+}
+
+/** Throws at provide time on a duplicated feature kind (config errors beat runtime surprises). */
+export function assertUniqueFeatureKinds(features: readonly ZeroFeature[]): void {
+  const kinds = new Set<string>();
+  for (const f of features) {
+    if (kinds.has(f.ɵkind)) {
+      throw ngxZeroError(`provideZero(): duplicate feature "${f.ɵkind}".`);
+    }
+    kinds.add(f.ɵkind);
+  }
 }

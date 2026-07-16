@@ -19,12 +19,17 @@ export function provideZeroTesting(
 ): EnvironmentProviders {
   return provideZero(() => {
     const user = typeof source === 'function' ? source() : source;
-    return {
-      logLevel: 'error',
-      kvStore: 'mem',
-      ...user, // user wins for defaulted keys…
-      cacheURL: null, // …never for forced ones
-      server: null,
-    } as ZeroOptions;
+    return toTestingZeroOptions(user);
   }, ...features);
+}
+
+/** Pure merge implementing the preset's contract: defaulted keys yield to the user; forced keys never do. */
+export function toTestingZeroOptions(user: ZeroTestingOptions): ZeroOptions {
+  return {
+    logLevel: 'error',
+    kvStore: 'mem',
+    ...user, // user wins for defaulted keys…
+    cacheURL: null, // …never for forced ones
+    server: null,
+  } as ZeroOptions;
 }

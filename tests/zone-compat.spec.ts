@@ -20,7 +20,11 @@ afterEach(() => TestBed.resetTestingModule());
 describe('zone compatibility', () => {
   it('no library source references NgZone (hard repo constraint)', () => {
     const srcDir = join(import.meta.dirname, '..', 'src');
-    for (const file of readdirSync(srcDir)) {
+    const files = readdirSync(srcDir, { recursive: true, encoding: 'utf8' }).filter(f =>
+      f.endsWith('.ts'),
+    );
+    expect(files.length).toBeGreaterThan(0);
+    for (const file of files) {
       const content = readFileSync(join(srcDir, file), 'utf8');
       expect.soft(content, `${file} must not use NgZone`).not.toMatch(/\bNgZone\b/);
     }
@@ -43,7 +47,9 @@ describe('zone compatibility', () => {
     effect(
       () => {
         const z = manager.instance();
-        if (z) seen.push((z as unknown as { options: ZeroOptions }).options.userID ?? 'none');
+        if (z) {
+          seen.push((z as unknown as { options: ZeroOptions }).options.userID ?? 'none');
+        }
       },
       { injector: TestBed.inject(Injector) },
     );
