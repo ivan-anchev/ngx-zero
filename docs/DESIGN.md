@@ -80,17 +80,94 @@ readonly close  = injectMutation(mutators.issue.close);
   userID change, and a captured raw reference throws after `close()`. Solid's `useZero`
   is an accessor for the same reason. Escape hatch for `z().preload(...)`, inspector, etc.
 
-### `provideZero(optionsOrFactory)`
+### `provideZero(source, ...features)` — implemented
 
 - Accepts static options, a reactive factory (may read signals; runs in injection
-  context so it can `inject()`), or `{ zero }` for an externally-owned instance.
-- Instance lifecycle mirrors the official React/Solid providers:
-  - any option change **except** `auth` string rotation → `close()` + recreate
-  - `auth` string→string → `zero.connection.connect({auth})` in place
-  - auth added/removed or `userID` change → recreate
-  - wraps `onClientStateNotFound` → in-place instance rotation (no `location.reload()`)
-- `close()` on `EnvironmentInjector` destroy.
-- **Browser-only construction** (SSR: see below).
+  context so it can `inject()`), or `{ zero }` for an externally-owned instance,
+  plus rest-param **features** (`withInit(...)`, ship-gated `withAuthRefresh(...)`).
+- Architecture: one internal `ZeroInstanceManager` behind an `InjectionToken`
+  (never exported) owns the instance. Every lifecycle transition funnels through
+  **one synchronous reconcile function driven by one effect**, so no two
+  reconciles ever interleave. Construction is eager and synchronous in an
+  environment initializer (root effects only flush with first CD — effect-only
+  construction would break the non-nullable first-read contract).
+
+Lifecycle verdicts (diff of previous vs next factory output):
+
+| Transition | Verdict | Action |
+|---|---|---|
+| identical rerun / only fn identity changed | `noop` | strictly nothing (latest closures still captured) |
+| `auth` string→string | `connect` | `zero.connection.connect({auth})` in place; auth epoch bumped |
+| `auth` added/removed (login/logout), any other option change | `recreate` | `close()` (unawaited) + `new Zero(...)` |
+| `onClientStateNotFound` fires (no user callback, or user callback throws) | rotation | in-place recreate with same options — no `location.reload()` |
+| `{ zero }` external source | adopt | never closed by the library; features still attach |
+
+- **Equality stance**: function-valued options compare by *presence only* —
+  sound because instances never capture user functions, only stable wrappers
+  that delegate to the latest factory output (so fresh inline closures cause
+  zero churn but still run the newest code). Non-function values use
+  `Object.is` plus a one-level shallow fallback for plain object/array literals
+  (inline `queryHeaders: {…}` is not a footgun); deliberately not recursive.
+  No hardcoded key list — the diff is structural over the union of own keys,
+  with a `Required<ZeroOptions>` canary test as the upstream-addition tripwire.
+- **Auth epoch**: a monotonic counter bumped on every recreate and every
+  factory-driven connect. Async consumers (the auth refresher) capture it
+  before awaiting and discard stale results — a timing-independent barrier.
+- **Unawaited close**: `close()` is fired and swallowed on recreate/destroy;
+  the instance signal never transiently holds `undefined`, and Zero's
+  `ActiveClientsManager` arbitrates same-storage overlap. Zero persists
+  continuously, so an unawaited close loses nothing.
+- **Constructor failure**: never re-expose the already-closed predecessor —
+  the signal goes `undefined`, the error is reported via `ErrorHandler`, and
+  the next valid factory emission recovers. A factory that throws at bootstrap
+  fails bootstrap loudly (programming error); a throw on rerun retains the
+  previous instance and self-recovers.
+- **Features pattern**: `with*()` returns an opaque `ZeroFeature` (ɵ-prefixed
+  internals); duplicate kinds are rejected at provide time. Features register
+  `ZERO_INSTANCE_HOOKS` multi-providers: `onInstanceCreated` (owned
+  constructions only — React `init` parity) and `onInstanceAttached` (every
+  current instance, returns a detach fn).
+- `close()` on `EnvironmentInjector` destroy; teardown never throws.
+- **Browser-only construction**: SSR is fully inert — `injectZero()` *call*
+  succeeds on the server, the factory never runs, *reading* the signal throws
+  an actionable message (see SSR below).
+
+### `provideZeroTesting(options, ...features)` — implemented
+
+- Fully functional **local** Zero (real IVM, real mutators, no network) for
+  TestBed. Forced at type + runtime: `cacheURL: null`, `server: null`.
+  Defaulted but overridable: `kvStore: 'mem'`, `logLevel: 'error'`.
+- Factory form preserved — lifecycle tests drive reconciliation through the
+  preset exactly like production.
+
+### `withAuthRefresh(refreshFn, options?)` — implemented, SHIP-GATED
+
+Code and tests land, but the export stays commented in `src/index.ts` until the
+feature is cleared to ship. Upstream caution: Zero deliberately *removed*
+`auth: () => Promise<string>` in favor of explicit string + `connect()`; this
+re-adds that convenience at the binding layer, so each semantic is a hard
+invariant:
+
+- **Refresh trigger**: `'needs-auth'` connection state only (`'error'` is
+  deliberately not handled — auto-connect would mask fatal non-auth failures).
+  Subscribe does NOT replay in Zero 1.8, so attach explicitly checks
+  `state.current` (instance already in needs-auth at attach must kick).
+- **Dedup**: one service-level in-flight latch — dedups across rapid emissions
+  and across instance rotation.
+- **Budget**: attempts count since last *successful connection* (`'connected'`
+  resets — token accepted, not merely produced). Not reset per instance or
+  episode, so a server that keeps rejecting freshly-minted tokens converges to
+  give-up instead of looping.
+- **Give-up**: after `maxAttempts` (default 3) or a null-like resolve (no token
+  exists — retrying can't mint a session): optional `onGiveUp` fires once; the
+  terminal `'needs-auth'` stays observable on `zero.connection.state`
+  (upstream-native surface, no parallel observable). `'connected'` re-arms.
+- **Backoff**: rejection → `backoffMs(attempt)` (default `min(1000·2ⁿ, 30s)`,
+  no jitter), then a re-check — if the options factory fixed auth meanwhile,
+  no retry happens at all.
+- **Stale-push safety**, three guards before `connect({auth})`: instance is
+  still current, auth epoch unchanged, state still `'needs-auth'` — the
+  reactive options factory wins every race by construction.
 
 ### Also v1
 
@@ -98,8 +175,7 @@ readonly close  = injectMutation(mutators.issue.close);
   `zero.connection.state`; `'needs-auth'` is the auth-refresh signal.
 - Route-resolver/guard `preload` helper (`zeroPreload(queryThunk)`) — Angular-native,
   no other binding has it. Preload TTL default `'none'` per upstream guidance.
-- `provideZeroTesting(partialOptions?)` — `cacheURL: null` + `kvStore: 'mem'` gives a
-  fully functional local Zero in unit tests, no server.
+- `provideZeroTesting` — implemented; see its section above.
 
 ## SSR (v1 stance)
 
@@ -133,14 +209,7 @@ twice a week so upstream changes page us, not users.
 - Suspense analog: `whenComplete(): Promise` on `QueryRef` for `@defer (when ...)`.
 - Multi-instance DX (`storageKey`): named injection tokens vs factory-scoped helpers.
 - `debounced()`-style helpers for search-as-you-type queries.
-- First-class auth refresh: `withAuthRefresh(() => Promise<string>)` on `provideZero` —
-  the library would subscribe to the `'needs-auth'` connection state, call the refresh
-  fn, and push the token via `connection.connect({auth})`, instead of every app
-  hand-wiring `injectConnectionState()` → refresh → auth-signal write. The reactive
-  options factory already handles the happy path (auth signal: string→string rotation
-  connects in place; presence change or userID change recreates the instance — a token
-  change does NOT reset the client). Caution before committing: upstream *removed*
-  `auth: () => Promise<string>` in favor of explicit string + `connect()`, so we'd be
-  re-adding a shape they deleted — needs answers for concurrent-refresh dedup,
-  refresh-failure backoff, and giving up (surface `'needs-auth'` to the app after N
-  failures rather than looping).
+- `withAuthRefresh` ship gate: the feature is implemented with answers for
+  concurrent-refresh dedup, refresh-failure backoff, and give-up (see its
+  section above), but the public export stays commented in `src/index.ts` until
+  it is cleared to ship against real-world `needs-auth` behavior.
