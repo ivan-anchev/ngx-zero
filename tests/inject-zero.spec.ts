@@ -5,12 +5,12 @@ import type { Zero, ZeroOptions } from '@rocicorp/zero';
 import { injectZero } from '../src/inject-zero.js';
 import { provideZero } from '../src/provide-zero.js';
 import { ZERO_CONSTRUCTOR } from '../src/instance-manager.js';
-import { fakeZeroHarness, provideTestChangeDetection, type FakeZeroHarness } from './helpers.js';
-
-const SCHEMA = { tables: {}, relationships: {} } as unknown as ZeroOptions['schema'];
-
-const options = (over: Partial<ZeroOptions> = {}): ZeroOptions =>
-  ({ schema: SCHEMA, cacheURL: 'http://cache', userID: 'u1', ...over }) as ZeroOptions;
+import {
+  fakeZeroHarness,
+  provideTestChangeDetection,
+  zeroOptions as options,
+  type FakeZeroHarness,
+} from './helpers.js';
 
 afterEach(() => TestBed.resetTestingModule());
 

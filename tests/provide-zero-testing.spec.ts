@@ -40,12 +40,21 @@ const mutators = defineMutators({
   },
 });
 
-afterEach(() => TestBed.resetTestingModule());
+afterEach(() => {
+  TestBed.resetTestingModule();
+  vi.restoreAllMocks();
+});
 
 describe('provideZeroTesting', () => {
   it('smoke: real in-mem Zero, mutation + materialize round-trip, closed on reset', async () => {
+    // Noise control, both expected and harmless here: Zero console.warns
+    // "starting up with no server URL" (raw console, bypasses logSink) and
+    // logs an error when close() settles the mutation's never-resolving
+    // .server promise. Spy restored by afterEach.
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const logSink = { log: () => {} };
     TestBed.configureTestingModule({
-      providers: [provideTestChangeDetection(), provideZeroTesting({ schema, mutators })],
+      providers: [provideTestChangeDetection(), provideZeroTesting({ schema, mutators, logSink })],
     });
     const zero = TestBed.runInInjectionContext(() => injectZero());
     const z = zero();

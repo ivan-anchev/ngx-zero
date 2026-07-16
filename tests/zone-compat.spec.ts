@@ -7,9 +7,13 @@ import type { ZeroOptions } from '@rocicorp/zero';
 import { injectZero } from '../src/inject-zero.js';
 import { provideZero } from '../src/provide-zero.js';
 import { ZERO_CONSTRUCTOR, ZERO_INSTANCE_MANAGER } from '../src/instance-manager.js';
-import { fakeZeroHarness, provideTestChangeDetection, type FakeZero } from './helpers.js';
-
-const SCHEMA = { tables: {}, relationships: {} } as unknown as ZeroOptions['schema'];
+import {
+  fakeZeroHarness,
+  provideTestChangeDetection,
+  zeroOptions as options,
+  ZONE_MODE,
+  type FakeZero,
+} from './helpers.js';
 
 afterEach(() => TestBed.resetTestingModule());
 
@@ -22,16 +26,14 @@ describe('zone compatibility', () => {
     }
   });
 
-  it(`reconciles from a callback fired outside any zone/context (mode: ${
-    (globalThis as Record<string, unknown>)['Zone'] === undefined ? 'zoneless' : 'zone'
-  })`, async () => {
+  it(`reconciles from a callback fired outside any zone/context (mode: ${ZONE_MODE})`, async () => {
     const harness = fakeZeroHarness();
     const auth = signal('t1');
     TestBed.configureTestingModule({
       providers: [
         provideTestChangeDetection(),
         { provide: ZERO_CONSTRUCTOR, useValue: harness.construct },
-        provideZero(() => ({ schema: SCHEMA, cacheURL: 'http://c', auth: auth() }) as ZeroOptions),
+        provideZero(() => options({ auth: auth() })),
       ],
     });
     const manager = TestBed.inject(ZERO_INSTANCE_MANAGER);
@@ -59,18 +61,14 @@ describe('zone compatibility', () => {
     expect(seen.length).toBeGreaterThan(0);
   });
 
-  it(`DOM re-renders from an out-of-zone callback via whenStable (mode: ${
-    (globalThis as Record<string, unknown>)['Zone'] === undefined ? 'zoneless' : 'zone'
-  })`, async () => {
+  it(`DOM re-renders from an out-of-zone callback via whenStable (mode: ${ZONE_MODE})`, async () => {
     const harness = fakeZeroHarness();
     const userID = signal('u1');
     TestBed.configureTestingModule({
       providers: [
         provideTestChangeDetection(),
         { provide: ZERO_CONSTRUCTOR, useValue: harness.construct },
-        provideZero(
-          () => ({ schema: SCHEMA, cacheURL: 'http://c', userID: userID() }) as ZeroOptions,
-        ),
+        provideZero(() => options({ userID: userID() })),
       ],
     });
 

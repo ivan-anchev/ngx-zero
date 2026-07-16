@@ -5,16 +5,26 @@ import {
 } from '@angular/core';
 import type { ConnectionState, Zero, ZeroOptions } from '@rocicorp/zero';
 
+/** Which vitest project is running — zone.js is loaded by the zone project's setup file. */
+export const ZONE_MODE: 'zoneless' | 'zone' =
+  (globalThis as Record<string, unknown>)['Zone'] === undefined ? 'zoneless' : 'zone';
+
 /**
  * The suite runs in two vitest projects (zoneless / zone.js). Change detection
- * must be provided to match the loaded runtime: zoneless when Zone is absent,
- * zone-based when zone.js was loaded by the project's setup file.
+ * must be provided to match the loaded runtime.
  */
 export function provideTestChangeDetection(): EnvironmentProviders {
-  return (globalThis as Record<string, unknown>)['Zone'] === undefined
+  return ZONE_MODE === 'zoneless'
     ? provideZonelessChangeDetection()
     : provideZoneChangeDetection();
 }
+
+/** Minimal schema stand-in for lifecycle specs driven through the FakeZero seam. */
+export const SCHEMA = { tables: {}, relationships: {} } as unknown as ZeroOptions['schema'];
+
+/** Baseline valid options for lifecycle specs; override per test. */
+export const zeroOptions = (over: Partial<ZeroOptions> = {}): ZeroOptions =>
+  ({ schema: SCHEMA, cacheURL: 'http://cache', userID: 'u1', ...over }) as ZeroOptions;
 
 /**
  * Controllable stand-in for Zero's `connection.state` Source. Matches Zero

@@ -12,17 +12,14 @@ import {
   type ZeroInstanceManager,
 } from '../src/instance-manager.js';
 import type { ZeroInstanceSource } from '../src/options-diff.js';
+import type { ZeroFeature } from '../src/features.js';
 import {
   fakeZeroHarness,
   provideTestChangeDetection,
+  zeroOptions as options,
   type FakeZero,
   type FakeZeroHarness,
 } from './helpers.js';
-
-const SCHEMA = { tables: {}, relationships: {} } as unknown as ZeroOptions['schema'];
-
-const options = (over: Partial<ZeroOptions> = {}): ZeroOptions =>
-  ({ schema: SCHEMA, cacheURL: 'http://cache', userID: 'u1', ...over }) as ZeroOptions;
 
 interface SetupResult {
   harness: FakeZeroHarness;
@@ -32,7 +29,7 @@ interface SetupResult {
 
 function setup(
   source: ZeroInstanceSource | (() => ZeroInstanceSource),
-  ...features: Parameters<typeof provideZero> extends [unknown, ...infer F] ? F : never
+  ...features: ZeroFeature[]
 ): SetupResult {
   const harness = fakeZeroHarness();
   const errors: unknown[] = [];

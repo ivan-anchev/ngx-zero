@@ -8,14 +8,10 @@ import { ZERO_CONSTRUCTOR, ZERO_INSTANCE_MANAGER } from '../src/instance-manager
 import {
   fakeZeroHarness,
   provideTestChangeDetection,
+  zeroOptions as options,
   NEEDS_AUTH,
   type FakeZeroHarness,
 } from './helpers.js';
-
-const SCHEMA = { tables: {}, relationships: {} } as unknown as ZeroOptions['schema'];
-
-const options = (over: Partial<ZeroOptions> = {}): ZeroOptions =>
-  ({ schema: SCHEMA, cacheURL: 'http://cache', userID: 'u1', ...over }) as ZeroOptions;
 
 interface Deferred {
   resolve: (v: string | null | undefined | false) => void;
@@ -25,8 +21,16 @@ interface Deferred {
 /** refreshFn returning caller-controlled deferreds, one per invocation. */
 function deferredRefresh(): { fn: ZeroAuthRefreshFn; calls: Deferred[] } {
   const calls: Deferred[] = [];
-  const fn: ZeroAuthRefreshFn = () =>
-    new Promise((resolve, reject) => calls.push({ resolve, reject }));
+  const fn: ZeroAuthRefreshFn = () => {
+    const deferred = new Promise<string | null | undefined | false>((resolve, reject) =>
+      calls.push({ resolve, reject }),
+    );
+    // Pre-attach a handled branch: the refresher's try/catch does handle the
+    // rejection, but zone.js's ZoneAwarePromise still prints the trace to
+    // stderr in the zone project — pure log noise for deliberate rejections.
+    deferred.catch(() => {});
+    return deferred;
+  };
   return { fn, calls };
 }
 

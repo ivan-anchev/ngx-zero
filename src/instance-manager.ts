@@ -48,6 +48,14 @@ export const ZERO_CONSTRUCTOR = new InjectionToken<(opts: ZeroOptions) => Zero>(
 );
 
 /**
+ * Identity box filled right after `new Zero(...)` returns. The CSNF wrapper
+ * closes over it to tell "my instance is still current" apart from "I am a
+ * late fire from a superseded, closing instance" (close() is unawaited —
+ * callbacks can straggle).
+ */
+type InstanceBox = { zero?: Zero };
+
+/**
  * Owns the Zero instance behind `ZERO_INSTANCE_MANAGER`. Every lifecycle
  * transition (factory rerun, in-place auth connect, client-state-not-found
  * rotation, external swap) funnels through ONE synchronous reconcile function
@@ -194,14 +202,15 @@ export class ZeroInstanceManager {
       return;
     }
 
+    // First construction, recovery from a failed one, or a switch away from an
+    // external source — nothing meaningful to diff against.
     const current = this.#instance();
-    const prevWasOptions = prev !== undefined && !isExternalSource(prev);
-    if (current === undefined || !prevWasOptions) {
+    if (current === undefined || prev === undefined || isExternalSource(prev)) {
       this.#recreate(next);
       return;
     }
 
-    const verdict = rotate ? 'recreate' : diffZeroOptions(prev as ZeroOptions, next);
+    const verdict = rotate ? 'recreate' : diffZeroOptions(prev, next);
     switch (verdict) {
       case 'recreate':
         this.#recreate(next);
@@ -226,10 +235,7 @@ export class ZeroInstanceManager {
     // same-storage overlap.
     this.#disposeCurrent();
 
-    // Filled right after construction so the CSNF wrapper can tell "my
-    // instance is still current" from "I am a late fire from a superseded,
-    // closing instance" (close() is unawaited — callbacks can straggle).
-    const owner: { zero?: Zero } = {};
+    const owner: InstanceBox = {};
     let zero: Zero;
     try {
       zero = this.#construct(this.#toConstructorOptions(opts, owner));
@@ -288,18 +294,26 @@ export class ZeroInstanceManager {
 
   /**
    * Options actually handed to `new Zero(...)`: every function-valued entry
-   * becomes a stable wrapper delegating to the latest factory output;
-   * `onClientStateNotFound` is ALWAYS ours (user callback wins; absent or
-   * throwing → guarded rotation; no `location.reload()` — Zero's default only
-   * applies when the option is absent, and ours never is).
+   * becomes a stable wrapper delegating to the latest factory output, and
+   * `onClientStateNotFound` is ALWAYS ours.
    */
-  #toConstructorOptions(opts: ZeroOptions, owner: { zero?: Zero }): ZeroOptions {
+  #toConstructorOptions(opts: ZeroOptions, owner: InstanceBox): ZeroOptions {
     const out: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(opts)) {
       if (key === 'onClientStateNotFound') continue;
       out[key] = typeof value === 'function' ? this.#wrapFunctionOption(key) : value;
     }
-    out['onClientStateNotFound'] = () => {
+    out['onClientStateNotFound'] = this.#wrapClientStateNotFound(owner);
+    return out as ZeroOptions;
+  }
+
+  /**
+   * CSNF policy: the user callback wins; absent or throwing → guarded
+   * rotation. No `location.reload()` — Zero's default only applies when the
+   * option is absent, and ours never is.
+   */
+  #wrapClientStateNotFound(owner: InstanceBox): () => void {
+    return () => {
       // Fires from Zero internals, outside any zone — only a signal write below.
       if (this.#destroyed || this.#rotationPending) return;
       // Stale-instance guard: a superseded instance's late CSNF (close() is
@@ -318,7 +332,6 @@ export class ZeroInstanceManager {
       this.#rotationPending = true;
       this.#rotationGen.update(n => n + 1); // → reconcile effect → recreate
     };
-    return out as ZeroOptions;
   }
 
   #wrapFunctionOption(key: string): (...args: unknown[]) => unknown {
