@@ -1,7 +1,7 @@
 import { DestroyRef, inject, InjectionToken, Injector } from '@angular/core';
 import type { ConnectionState, Zero } from '@rocicorp/zero';
 import { zeroFeature, type ZeroFeature } from './features.js';
-import { expBackoffMs, sleep, tryCatch } from './utils.js';
+import { createRetryRunner, expBackoffMs, tryCatch } from './utils.js';
 import {
   ZERO_INSTANCE_HOOKS,
   ZERO_INSTANCE_MANAGER,
@@ -67,8 +67,11 @@ const ZERO_AUTH_REFRESH_CONFIG = new InjectionToken<
 >('ngx-zero/auth-refresh-config');
 
 /**
- * One refresher per provideZero environment. State that must SPAN rotations
- * (in-flight latch, attempt budget, give-up latch) lives here, not per-instance.
+ * One refresher per provideZero environment. The retry runner's state
+ * (in-flight dedup, attempt budget, give-up latch) SPANS rotations — the
+ * budget is not reset per instance/episode (that would allow an infinite
+ * rotate-refresh loop); only 'connected' re-arms it, because success means
+ * the token was ACCEPTED, not merely produced.
  */
 export class ZeroAuthRefresher {
   readonly #config = inject(ZERO_AUTH_REFRESH_CONFIG);
@@ -85,31 +88,18 @@ export class ZeroAuthRefresher {
   }
 
   /**
-   * DEDUP: single in-flight latch, service level → dedups across rapid
-   * emissions AND across rotation.
-   */
-  #inflight = false;
-
-  /**
-   * BUDGET: attempts since last successful connection. NOT reset per
-   * instance/episode (that would allow an infinite rotate-refresh loop). Only
-   * 'connected' resets it — success means token ACCEPTED, not token produced.
-   */
-  #attempts = 0;
-
-  /**
-   * GIVE-UP LATCH: once set, dormant until a 'connected' re-arms. "Must not
-   * spin forever" is structural: no code path calls refreshFn while set.
-   */
-  #givenUp = false;
-
-  /**
    * Aborted at destroy: a pending backoff sleep resolves and its timer clears.
    * No destroyed flag beyond this — after destroy the state subscription is
    * detached and the manager's instance signal is `undefined`, so every late
    * async path already dead-ends on the `zero === undefined` guards.
    */
   readonly #destroyAbort = new AbortController();
+
+  readonly #retry = createRetryRunner({
+    maxAttempts: this.#config.maxAttempts ?? 3,
+    backoffMs: attempt => this.#backoffDelay(attempt),
+    abort: this.#destroyAbort.signal,
+  });
 
   constructor() {
     inject(DestroyRef).onDestroy(() => this.#destroyAbort.abort());
@@ -120,11 +110,10 @@ export class ZeroAuthRefresher {
     const onState = (state: ConnectionState) => {
       switch (state.name) {
         case 'connected':
-          this.#attempts = 0;
-          this.#givenUp = false; // healthy again — re-arm
+          this.#retry.reset(); // healthy again — re-arm budget and give-up latch
           break;
         case 'needs-auth':
-          this.#kick(state);
+          void this.#refresh(state);
           break;
         // 'error' deliberately NOT handled: fatal non-auth failure;
         // auto-connect would mask real errors.
@@ -138,52 +127,41 @@ export class ZeroAuthRefresher {
     // needs-auth) must be checked explicitly or the feature deadlocks.
     const current = zero.connection.state.current;
     if (current.name === 'needs-auth') {
-      this.#kick(current);
+      void this.#refresh(current);
     }
 
     return unsubscribe;
   }
 
-  #kick(state: NeedsAuthState): void {
-    if (this.#givenUp || this.#inflight) {
-      return;
-    }
-    if (this.#attempts >= (this.#config.maxAttempts ?? 3)) {
-      this.#giveUp(state);
-      return;
-    }
-    this.#inflight = true;
-    void this.#run(state);
-  }
-
-  // NO try/finally releasing #inflight: the backoff branch releases it and
-  // #recheck() may legitimately START a new run — a trailing finally would
-  // release the NEW run's latch. Every branch releases exactly once.
-  async #run(state: NeedsAuthState): Promise<void> {
-    this.#attempts++;
+  async #refresh(state: NeedsAuthState): Promise<void> {
     const epoch = this.#manager.authEpoch(); // capture before awaiting
 
-    const refreshed = await tryCatch(this.#config.refreshFn);
+    const run = await this.#retry.run(this.#config.refreshFn);
+    if (run.status === 'skipped') {
+      return; // deduped against an in-flight refresh, or dormant after give-up
+    }
+    if (run.status === 'gave-up') {
+      this.#notifyGiveUp(state);
+      return;
+    }
 
-    if (refreshed.error) {
-      // Transient → backoff, release latch, then RE-CHECK current state (if
-      // the factory fixed auth meanwhile, no retry happens at all).
-      await sleep(this.#backoffDelay(this.#attempts - 1), this.#destroyAbort.signal);
-      this.#inflight = false;
+    if (run.outcome.error) {
+      // Transient failure — the runner already slept its backoff. RE-CHECK
+      // current state (if the factory fixed auth meanwhile, no retry happens).
       this.#recheck();
       return;
     }
-
-    this.#inflight = false;
-
-    if (typeof refreshed.result === 'string') {
+    if (typeof run.outcome.result === 'string') {
       // "Refresh produced a token" ≠ "server accepted it". If rejected,
-      // needs-auth fires again → next kick → #attempts still counting →
+      // needs-auth fires again → next refresh → budget still counting →
       // converges to give-up.
-      this.#push(refreshed.result, epoch);
+      this.#push(run.outcome.result, epoch);
       return;
     }
-    this.#giveUp(state); // null-like: no token exists — retrying can't mint a session
+    // Null-like resolve: no token exists — retrying can't mint a session.
+    if (this.#retry.giveUp()) {
+      this.#notifyGiveUp(state);
+    }
   }
 
   /**
@@ -223,15 +201,11 @@ export class ZeroAuthRefresher {
     }
     const state = zero.connection.state.current;
     if (state.name === 'needs-auth') {
-      this.#kick(state);
+      void this.#refresh(state);
     }
   }
 
-  #giveUp(state: NeedsAuthState): void {
-    if (this.#givenUp) {
-      return;
-    }
-    this.#givenUp = true;
+  #notifyGiveUp(state: NeedsAuthState): void {
     tryCatch(() => this.#config.onGiveUp?.(state)); // user callback contained
   }
 }

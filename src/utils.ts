@@ -130,6 +130,77 @@ export function expBackoffMs(attempt: number, base = 1000, cap = 30_000): number
   return Math.min(base * 2 ** attempt, cap);
 }
 
+/** Outcome of a `RetryRunner.run()` call. */
+export type RetryRun<T> =
+  /** The function ran; `outcome` is its `tryCatch` result (backoff already slept on error). */
+  | { status: 'completed'; outcome: Result<T> }
+  /** Nothing ran: a run (or its backoff) is in flight, or the runner has given up. */
+  | { status: 'skipped' }
+  /** Nothing ran and this call spent the last of the budget — handle give-up now (fires once). */
+  | { status: 'gave-up' };
+
+export interface RetryRunner {
+  /** Latched by exhaustion or `giveUp()`; `reset()` re-arms. While set, `run()` skips. */
+  readonly givenUp: boolean;
+  /** Latch give-up explicitly; true only for the call that flipped it. */
+  giveUp(): boolean;
+  /** Re-arm: clears the attempt budget and the give-up latch. */
+  reset(): void;
+  /** Run one attempt of `fn`; a failed attempt holds the runner through its backoff. */
+  run<T>(fn: () => Promise<T>): Promise<RetryRun<T>>;
+}
+
+/**
+ * Serialized attempt executor with a give-up budget: one run in flight at a
+ * time, backoff after failures, dormant once the budget is spent until
+ * `reset()`. The budget deliberately spans `run()` calls — resetting per call
+ * would allow an infinite retry loop driven by external events.
+ */
+export function createRetryRunner(options: {
+  /** Attempts allowed between resets. */
+  maxAttempts: number;
+  /** Delay after failed attempt n (0-based). Default: `expBackoffMs`. */
+  backoffMs?: (attempt: number) => number;
+  /** Resolves a pending backoff sleep early (see `sleep`). */
+  abort?: AbortSignal;
+}): RetryRunner {
+  let running = false;
+  let givenUp = false;
+  let attempts = 0;
+
+  return {
+    get givenUp() {
+      return givenUp;
+    },
+    giveUp() {
+      const flipped = !givenUp;
+      givenUp = true;
+      return flipped;
+    },
+    reset() {
+      attempts = 0;
+      givenUp = false;
+    },
+    async run(fn) {
+      if (running || givenUp) {
+        return { status: 'skipped' };
+      }
+      if (attempts >= options.maxAttempts) {
+        givenUp = true;
+        return { status: 'gave-up' };
+      }
+      running = true;
+      attempts++;
+      const outcome = await tryCatch(fn);
+      if (outcome.error) {
+        await sleep((options.backoffMs ?? expBackoffMs)(attempts - 1), options.abort);
+      }
+      running = false;
+      return { status: 'completed', outcome };
+    },
+  };
+}
+
 /**
  * Timer-based delay. An aborted signal RESOLVES the promise early (never
  * rejects) and clears the timer — callers decide what abort means by
