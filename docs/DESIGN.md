@@ -38,28 +38,50 @@ readonly issues = injectQuery(() => queries.issues.open({ assignee: this.userId(
 readonly close  = injectMutation(mutators.issue.close);
 ```
 
-### `injectQuery(queryThunk, options?): QueryRef<T>`
+### `injectQuery(queryThunk, options?): QueryRef<T>` — implemented
 
 - Thunk runs in a **reactive context** (TanStack-adapter style): signals read inside
-  retrack; re-materialization is keyed on `asQueryInternals(q).hash()` so a new query
-  object with an unchanged hash never destroys the view.
+  retrack. One computed tracks both the current Zero instance and the query identity,
+  coalescing their changes into one reconciliation.
+- Identity is semantic rather than object identity. A registry `QueryRequest` uses its
+  `queryName` plus recursively key-sorted JSON args. A raw query uses its AST hash plus
+  serialized result format, because `.one()` and `.limit(1)` can share an AST hash while
+  returning different shapes. A new object with an unchanged key never destroys the view.
 - Thunk may return `Falsy` to disable → typed overload where `data: Signal<T | undefined>`,
-  status `'disabled'`.
+  status can be `'disabled'`. Disabling destroys the live view and resets data to
+  `undefined`, status to `'disabled'`, and error to `undefined`; re-enabling materializes
+  against the current instance. The always-enabled overload excludes `'disabled'` from
+  its status type.
 - Returns an object of signals (NOT a tuple, NOT an Angular `Resource`):
   `data`, `status: Signal<'unknown' | 'complete' | 'error' | 'disabled'>`,
   `error`, `isComplete`, `retry()`, `updateTTL()`.
-- `options: { ttl?: TTL; injector?: Injector }` — standard CIF pattern
+- `options: { ttl?: TTL; keepPreviousData?: boolean; injector?: Injector }` — standard CIF pattern
   (`assertInInjectionContext` unless `injector` given).
 - **Materializes eagerly + synchronously at call time** (local store hydrates
-  synchronously → first CD pass has data). Hash-change re-materialization runs in an
-  effect; TTL changes call `updateTTL` without re-materializing.
+  synchronously through the listener → first CD pass has data). Key or instance changes
+  re-materialize in an effect. Listener emissions are the only write path for the
+  data/status/error triple; successful emissions clear an earlier error.
+- `keepPreviousData` is opt-in and applies only to a same-instance enabled key change whose
+  new initial snapshot is both empty and `'unknown'`. During that bridge, data remains the
+  previous snapshot, status reflects the new view's `'unknown'`, `isComplete` is false, and
+  error is cleared. The first later emission ends the bridge. Fresh local rows always win.
+  Instance replacement is a hard reset regardless of this option, preventing old-user data
+  from flashing after an identity change.
+- `retry()` destroys and re-materializes the current enabled query against the current
+  instance from any status; it is a no-op while disabled or after host destruction. During
+  a bridge it performs a hard refresh and drops the bridge. `updateTTL(ttl)` forwards to the
+  current view without re-materializing and does not persist to a future view; each new
+  materialization reads `options.ttl` again.
 - View mechanism: default `TypedView` + `addListener` → `signal.set()`. Snapshots are
   immutable with structural sharing (row identity preserved → `@for track` reuses DOM).
   A custom ViewFactory via `@rocicorp/zero/bindings` is a v2 perf project, only if
   profiling justifies it.
 - **Per-call views, no ViewStore.** React's ViewStore exists for StrictMode remounts and
   render-phase materialization; Angular has neither. Zero dedupes the IVM pipeline by
-  query hash anyway. Cleanup via `DestroyRef`.
+  query hash anyway. Cleanup via `DestroyRef` marks the session stale, unsubscribes the
+  listener, then destroys the view. Missing `provideZero` throws setup guidance at inject
+  time; thrown thunks and materialization failures propagate without half-applying a new
+  controller session.
 
 ### `injectMutation(mutator, options?): MutationRef`
 
@@ -86,7 +108,9 @@ readonly close  = injectMutation(mutators.issue.close);
   context so it can `inject()`), or `{ zero }` for an externally-owned instance,
   plus rest-param features such as `withBootstrap(...)`.
 - One internal manager owns reconciliation. The environment initializer starts one
-  effect; the first instance is created on that effect's initial flush.
+  effect, but first reconciles synchronously before registering it. Components can
+  therefore materialize queries in field initializers; the effect tracks later source
+  changes without duplicating the initial instance.
 
 Lifecycle verdicts (diff of previous vs next factory output):
 
@@ -150,8 +174,6 @@ twice a week so upstream changes page us, not users.
 
 ## Open questions (next spar)
 
-- `injectQuery` list-DX sugar: `keepPreviousData` option when hash changes (avoid
-  flash-of-empty during re-materialization)?
 - `.asResource()` interop adapter (v22 `Resource` contract, `chain()` composition) —
   wait for demand. Rationale for not building on `resource({stream})`: Zero's
   `'unknown'` state has usable local data immediately; Resource's `loading/resolved/
