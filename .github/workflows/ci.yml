@@ -36,7 +36,7 @@ jobs:
       # compat check, and typescript-eslint doesn't track typescript@latest.
       - run: pnpm lint
       - if: matrix.angular == 'latest'
-        run: pnpm add -D @angular/core@latest zone.js@latest typescript@latest
+        run: pnpm add -D @angular/compiler@latest @angular/core@latest @angular/platform-browser@latest zone.js@latest typescript@latest
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
