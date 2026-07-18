@@ -6,16 +6,26 @@
   "scripts": {
     "dev": "vite",
     "typecheck": "tsc --noEmit",
-    "build": "tsc --noEmit && vite build"
+    "build": "tsc --noEmit && vite build",
+    "db:up": "docker compose up -d --wait",
+    "db:push": "drizzle-kit push --force",
+    "db:seed": "tsx src/db/seed.ts",
+    "db:setup": "pnpm db:up && pnpm db:push && pnpm db:seed"
   },
   "dependencies": {
     "@angular/compiler": "20.3.26",
     "@angular/core": "20.3.26",
     "@angular/platform-browser": "20.3.26",
     "@rocicorp/zero": "1.8.0",
-    "ngx-zero": "workspace:*"
+    "dotenv": "^17.4.2",
+    "drizzle-orm": "^0.45.2",
+    "ngx-zero": "workspace:*",
+    "pg": "^8.22.0"
   },
   "devDependencies": {
+    "@types/pg": "^8.20.0",
+    "drizzle-kit": "^0.31.10",
+    "tsx": "^4.23.1",
     "typescript": "~5.9.2",
     "vite": "^7.3.6"
   }
