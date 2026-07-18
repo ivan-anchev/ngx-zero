@@ -76,6 +76,14 @@ const OneMissHost = Component({ template: '' })(
   },
 );
 
+const BridgingQueryHost = Component({ template: '' })(
+  class {
+    readonly issues = injectQuery(() => builder.issue.orderBy('id', 'asc'), {
+      keepPreviousData: true,
+    });
+  },
+);
+
 afterEach(() => {
   TestBed.resetTestingModule();
   vi.restoreAllMocks();
@@ -89,6 +97,23 @@ function setup(): void {
       provideZeroTesting({ schema, mutators, logSink: { log: () => {} } }),
     ],
   });
+}
+
+function setupWithUser(): { user: ReturnType<typeof signal<string>> } {
+  const user = signal('u1');
+  vi.spyOn(console, 'warn').mockImplementation(() => {});
+  TestBed.configureTestingModule({
+    providers: [
+      provideTestChangeDetection(),
+      provideZeroTesting(() => ({
+        schema,
+        mutators,
+        userID: user(),
+        logSink: { log: () => {} },
+      })),
+    ],
+  });
+  return { user };
 }
 
 async function createIssue(id: string, title: string): Promise<void> {
@@ -192,6 +217,47 @@ describe('injectQuery', () => {
 
     expect(disabledFixture.componentInstance.issues.data()).toBeUndefined();
     expect(disabledFixture.componentInstance.issues.status()).toBe('disabled');
+  });
+
+  it('hard-resets on instance swap and never serves the old user rows despite keepPreviousData', async () => {
+    const { user } = setupWithUser();
+    await createIssue('i1', 'first');
+    const firstZero = TestBed.inject(ZERO_INSTANCE).zeroOrThrow();
+    const fixture = TestBed.createComponent(BridgingQueryHost);
+    fixture.autoDetectChanges();
+    await fixture.whenStable();
+    expect(fixture.componentInstance.issues.data()).toMatchObject([{ id: 'i1' }]);
+
+    user.set('u2');
+    await fixture.whenStable();
+
+    expect(TestBed.inject(ZERO_INSTANCE).zeroOrThrow()).not.toBe(firstZero);
+    expect(fixture.componentInstance.issues.data()).toEqual([]);
+
+    await createIssue('i2', 'second');
+    await vi.waitFor(() =>
+      expect(fixture.componentInstance.issues.data()).toMatchObject([{ id: 'i2' }]),
+    );
+  });
+
+  it('stays disabled across an instance swap and enables against the current instance', async () => {
+    const { user } = setupWithUser();
+    await createIssue('i1', 'first');
+    const fixture = TestBed.createComponent(DisableableQueryHost);
+    fixture.autoDetectChanges();
+    await fixture.whenStable();
+    expect(fixture.componentInstance.issues.status()).toBe('disabled');
+
+    user.set('u2');
+    await fixture.whenStable();
+    expect(fixture.componentInstance.issues.status()).toBe('disabled');
+    expect(fixture.componentInstance.issues.data()).toBeUndefined();
+
+    await createIssue('i2', 'second');
+    fixture.componentInstance.enabled.set(true);
+    await fixture.whenStable();
+
+    expect(fixture.componentInstance.issues.data()).toMatchObject([{ id: 'i2' }]);
   });
 
   it('throws at inject time when provideZero is missing, naming the fix', () => {
