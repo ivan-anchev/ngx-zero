@@ -209,6 +209,128 @@ describe('QueryViewController', () => {
     expect(zero.requests).toHaveLength(2);
   });
 
+  it('surfaces listener errors and clears them atomically on the next success', () => {
+    const view = new FakeTypedView([], 'unknown');
+    const zero = new MaterializeHarness([view]);
+    const query = controller();
+    const boom = { name: 'boom' } as unknown as ErroredQuery;
+
+    query.reconcile(spec(zero, 'all'));
+
+    view.emit([], 'error', boom);
+    expect(query.status()).toBe('error');
+    expect(query.error()).toBe(boom);
+
+    view.emit([{ id: 'i1' }], 'complete');
+    expect(query.status()).toBe('complete');
+    expect(query.error()).toBeUndefined();
+    expect(query.data()).toEqual([{ id: 'i1' }]);
+  });
+
+  it('clears a prior error when a key change re-materializes', () => {
+    const first = new FakeTypedView([], 'error');
+    const second = new FakeTypedView([{ id: 'i1' }], 'complete');
+    const zero = new MaterializeHarness([first, second]);
+    const query = controller();
+    const boom = { name: 'boom' } as unknown as ErroredQuery;
+
+    query.reconcile(spec(zero, 'old'));
+    first.emit([], 'error', boom);
+    expect(query.error()).toBe(boom);
+
+    query.reconcile(spec(zero, 'new'));
+    expect(query.status()).toBe('complete');
+    expect(query.error()).toBeUndefined();
+  });
+
+  it('lets fresh non-empty data win over the bridge', () => {
+    const first = new FakeTypedView([{ id: 'old' }], 'complete');
+    const second = new FakeTypedView([{ id: 'local' }], 'unknown');
+    const zero = new MaterializeHarness([first, second]);
+    const query = controller(true);
+
+    query.reconcile(spec(zero, 'old'));
+    query.reconcile(spec(zero, 'new'));
+
+    expect(query.data()).toEqual([{ id: 'local' }]);
+    expect(query.status()).toBe('unknown');
+  });
+
+  it('never bridges without opt-in, across instances, or from disabled', () => {
+    const optOutViews = [
+      new FakeTypedView([{ id: 'old' }], 'complete'),
+      new FakeTypedView([], 'unknown'),
+    ];
+    const optOutZero = new MaterializeHarness(optOutViews);
+    const optOut = controller(false);
+    optOut.reconcile(spec(optOutZero, 'old'));
+    optOut.reconcile(spec(optOutZero, 'new'));
+    expect(optOut.data()).toEqual([]);
+
+    const firstZero = new MaterializeHarness([
+      new FakeTypedView([{ id: 'old' }], 'complete'),
+    ]);
+    const secondZero = new MaterializeHarness([new FakeTypedView([], 'unknown')]);
+    const swapped = controller(true);
+    swapped.reconcile(spec(firstZero, 'all'));
+    swapped.reconcile(spec(secondZero, 'all2'));
+    expect(swapped.data()).toEqual([]);
+
+    const enableZero = new MaterializeHarness([new FakeTypedView([], 'unknown')]);
+    const enabled = controller(true);
+    enabled.reconcile({
+      zero: enableZero as unknown as Zero,
+      key: DISABLED,
+      request: undefined,
+    });
+    enabled.reconcile(spec(enableZero, 'all'));
+    expect(enabled.data()).toEqual([]);
+    expect(enabled.status()).toBe('unknown');
+  });
+
+  it('bridges an empty one() miss and holds until the new view emits', () => {
+    const first = new FakeTypedView({ id: 'old' }, 'complete');
+    const second = new FakeTypedView(undefined, 'unknown');
+    const zero = new MaterializeHarness([first, second]);
+    const query = controller(true);
+
+    query.reconcile(spec(zero, 'old'));
+    query.reconcile(spec(zero, 'new'));
+
+    expect(query.data()).toEqual({ id: 'old' });
+    expect(query.status()).toBe('unknown');
+
+    second.emit(undefined, 'complete');
+    expect(query.data()).toBeUndefined();
+    expect(query.status()).toBe('complete');
+  });
+
+  it('forwards options.ttl per materialization and scopes updateTTL to the current view', () => {
+    const first = new FakeTypedView([], 'complete');
+    const second = new FakeTypedView([], 'complete');
+    const zero = new MaterializeHarness([first, second]);
+    const query = new QueryViewController({ keepPreviousData: false, ttl: 60 });
+
+    query.reconcile(spec(zero, 'old'));
+    expect(zero.optionsSeen).toEqual([{ ttl: 60 }]);
+
+    query.updateTTL(120);
+    expect(first.ttlUpdates).toEqual([120]);
+    expect(zero.requests).toHaveLength(1);
+
+    query.reconcile(spec(zero, 'new'));
+    expect(zero.optionsSeen).toEqual([{ ttl: 60 }, { ttl: 60 }]);
+    expect(second.ttlUpdates).toEqual([]);
+  });
+
+  it('omits materialize options entirely when no ttl was configured', () => {
+    const zero = new MaterializeHarness([new FakeTypedView([], 'complete')]);
+    const query = controller();
+
+    query.reconcile(spec(zero, 'all'));
+    expect(zero.optionsSeen).toEqual([undefined]);
+  });
+
   it('treats retry as a no-op while disabled and after destroy', () => {
     const view = new FakeTypedView([{ id: 'i1' }], 'complete');
     const zero = new MaterializeHarness([view]);
