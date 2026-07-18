@@ -119,7 +119,6 @@ export class QueryViewController {
 
     const session: ViewSession = { alive: true, view, unsubscribe: noop };
     let isInitialEmission = true;
-    let bridging = false;
 
     const listener = (
       data: unknown,
@@ -137,13 +136,10 @@ export class QueryViewController {
           resultType === 'unknown' &&
           isEmptyResult(data)
         ) {
-          bridging = true;
           this.#status.set('unknown');
           this.#error.set(undefined);
           return;
         }
-      } else if (bridging) {
-        bridging = false;
       }
 
       this.#data.set(data);
