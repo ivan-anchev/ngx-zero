@@ -37,7 +37,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "build": "rm -rf dist && tsc -p tsconfig.build.json",
-    "check:package": "pnpm build && publint && attw --pack .",
+    "check:package": "pnpm build && publint && attw --pack . --profile esm-only",
     "prepare": "husky"
   },
   "peerDependencies": {

@@ -14,7 +14,7 @@ import {
 } from '@rocicorp/zero';
 import { injectZero } from '../src/inject-zero.js';
 import { provideZeroTesting } from '../src/provide-zero-testing.js';
-import { ZERO_CONSTRUCTOR, ZERO_INSTANCE_MANAGER } from '../src/instance-manager.js';
+import { ZERO_CONSTRUCTOR, ZERO_INSTANCE } from '../src/instance-manager.js';
 import { fakeZeroHarness, provideTestChangeDetection } from './helpers.js';
 
 const issue = table('issue')
@@ -57,6 +57,7 @@ describe('provideZeroTesting', () => {
       providers: [provideTestChangeDetection(), provideZeroTesting({ schema, mutators, logSink })],
     });
     const zero = TestBed.runInInjectionContext(() => injectZero());
+    TestBed.tick();
     const z = zero();
     expect(z).toBeInstanceOf(Zero);
 
@@ -84,7 +85,8 @@ describe('provideZeroTesting', () => {
         } as never),
       ],
     });
-    TestBed.inject(ZERO_INSTANCE_MANAGER);
+    TestBed.inject(ZERO_INSTANCE);
+    TestBed.tick();
     expect(harness.latest().options.cacheURL).toBeNull();
     expect(harness.latest().options.server).toBeNull();
   });
@@ -98,7 +100,8 @@ describe('provideZeroTesting', () => {
         provideZeroTesting({ schema, logLevel: 'debug' }),
       ],
     });
-    TestBed.inject(ZERO_INSTANCE_MANAGER);
+    TestBed.inject(ZERO_INSTANCE);
+    TestBed.tick();
     expect(harness.latest().options.kvStore).toBe('mem'); // defaulted
     expect(harness.latest().options.logLevel).toBe('debug'); // user wins
   });
@@ -118,7 +121,8 @@ describe('provideZeroTesting', () => {
         provideZeroTesting({ schema, kvStore: customStore }),
       ],
     });
-    TestBed.inject(ZERO_INSTANCE_MANAGER);
+    TestBed.inject(ZERO_INSTANCE);
+    TestBed.tick();
     expect(harness.latest().options.kvStore).toBe(customStore); // user wins over 'mem'
   });
 
@@ -132,7 +136,8 @@ describe('provideZeroTesting', () => {
         provideZeroTesting(() => ({ schema, userID: userID() })),
       ],
     });
-    TestBed.inject(ZERO_INSTANCE_MANAGER);
+    TestBed.inject(ZERO_INSTANCE);
+    TestBed.tick();
     expect(harness.created).toHaveLength(1);
 
     userID.set('u2');

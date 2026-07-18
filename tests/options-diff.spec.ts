@@ -3,9 +3,8 @@ import type { ZeroOptions } from '@rocicorp/zero';
 import {
   diffZeroOptions,
   isExternalSource,
-  type ZeroReconcileVerdict,
 } from '../src/options-diff.js';
-import { valueEquals } from '../src/utils.js';
+import type { ZeroReconcileVerdict } from '../src/types.js';
 
 const base = (over: Partial<ZeroOptions> = {}): ZeroOptions =>
   ({ schema: SCHEMA, cacheURL: 'http://cache', userID: 'u1', ...over }) as ZeroOptions;
@@ -34,45 +33,36 @@ describe('diffZeroOptions', () => {
     });
   });
 
-  describe('function presence vs identity', () => {
-    it('fresh inline closures on each factory run → noop', () => {
+  describe('top-level identity', () => {
+    it('fresh inline closures on each factory run → recreate', () => {
       expect(
         diffZeroOptions(
           base({ onUpdateNeeded: () => {}, getTraceparent: () => 'a' }),
           base({ onUpdateNeeded: () => {}, getTraceparent: () => 'b' }),
         ),
-      ).toBe('noop');
+      ).toBe('recreate');
     });
 
     it('function added or removed (presence flip) → recreate', () => {
       expect(diffZeroOptions(base(), base({ onUpdateNeeded: () => {} }))).toBe('recreate');
       expect(diffZeroOptions(base({ onUpdateNeeded: () => {} }), base())).toBe('recreate');
     });
-  });
 
-  describe('one-level shallow equality', () => {
-    it('equal inline object/array literals → noop', () => {
+    it('fresh but structurally equal objects → recreate', () => {
       expect(
         diffZeroOptions(
           base({ queryHeaders: { a: '1' }, context: { user: 'u' } as never }),
           base({ queryHeaders: { a: '1' }, context: { user: 'u' } as never }),
         ),
-      ).toBe('noop');
-    });
-
-    it('changed leaf → recreate', () => {
-      expect(
-        diffZeroOptions(base({ queryHeaders: { a: '1' } }), base({ queryHeaders: { a: '2' } })),
       ).toBe('recreate');
     });
 
-    it('two-level nested rebuild → recreate (deliberately not recursive)', () => {
-      expect(
-        diffZeroOptions(
-          base({ context: { nested: { a: 1 } } as never }),
-          base({ context: { nested: { a: 1 } } as never }),
-        ),
-      ).toBe('recreate');
+    it('shared object references → noop', () => {
+      const queryHeaders = { a: '1' };
+      const context = { user: 'u' } as never;
+      expect(diffZeroOptions(base({ queryHeaders, context }), base({ queryHeaders, context }))).toBe(
+        'noop',
+      );
     });
   });
 
@@ -138,7 +128,7 @@ describe('diffZeroOptions', () => {
       userID: ['u2', 'recreate'],
       storageKey: ['k2', 'recreate'],
       logLevel: ['debug', 'recreate'],
-      logSink: [{ log: () => {} }, 'recreate'], // plain object w/ fresh fn leaf
+      logSink: [{ log: () => {} }, 'recreate'],
       schema: [{ tables: { t: 1 }, relationships: {} }, 'recreate'],
       mutators: [{ m: 1 }, 'recreate'],
       mutateURL: ['http://other', 'recreate'],
@@ -146,9 +136,9 @@ describe('diffZeroOptions', () => {
       getQueriesURL: ['http://other', 'recreate'],
       queryURL: ['http://other', 'recreate'],
       queryHeaders: [{ h: '2' }, 'recreate'],
-      getTraceparent: [() => 'other', 'noop'], // fn identity ignored
-      onOnlineChange: [() => {}, 'noop'],
-      onUpdateNeeded: [() => {}, 'noop'],
+      getTraceparent: [() => 'other', 'recreate'],
+      onOnlineChange: [() => {}, 'recreate'],
+      onUpdateNeeded: [() => {}, 'recreate'],
       onClientStateNotFound: [() => {}, 'noop'], // never diffed
       hiddenTabDisconnectDelay: [10, 'recreate'],
       disconnectTimeoutMs: [20, 'recreate'],
@@ -156,7 +146,7 @@ describe('diffZeroOptions', () => {
       kvStore: ['idb', 'recreate'],
       maxHeaderLength: [40, 'recreate'],
       slowMaterializeThreshold: [50, 'recreate'],
-      batchViewUpdates: [(apply: () => void) => apply(), 'noop'],
+      batchViewUpdates: [(apply: () => void) => apply(), 'recreate'],
       maxRecentQueries: [60, 'recreate'],
       queryChangeThrottleMs: [70, 'recreate'],
       context: [{ c: 2 }, 'recreate'],
@@ -172,23 +162,6 @@ describe('diffZeroOptions', () => {
         expect(diffZeroOptions(canary as ZeroOptions, changed)).toBe(verdict);
       });
     }
-  });
-});
-
-describe('valueEquals', () => {
-  it('compares class-prototyped values by identity', () => {
-    class Sink {
-      log() {}
-    }
-    const a = new Sink();
-    expect(valueEquals(a, a)).toBe(true);
-    expect(valueEquals(a, new Sink())).toBe(false);
-  });
-
-  it('compares arrays one level deep', () => {
-    expect(valueEquals([1, 2], [1, 2])).toBe(true);
-    expect(valueEquals([1, 2], [1, 3])).toBe(false);
-    expect(valueEquals([1, 2], [1, 2, 3])).toBe(false);
   });
 });
 

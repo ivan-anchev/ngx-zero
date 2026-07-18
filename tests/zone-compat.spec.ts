@@ -6,7 +6,7 @@ import { TestBed } from '@angular/core/testing';
 import type { ZeroOptions } from '@rocicorp/zero';
 import { injectZero } from '../src/inject-zero.js';
 import { provideZero } from '../src/provide-zero.js';
-import { ZERO_CONSTRUCTOR, ZERO_INSTANCE_MANAGER } from '../src/instance-manager.js';
+import { ZERO_CONSTRUCTOR, ZERO_INSTANCE } from '../src/instance-manager.js';
 import {
   fakeZeroHarness,
   provideTestChangeDetection,
@@ -40,16 +40,14 @@ describe('zone compatibility', () => {
         provideZero(() => options({ auth: auth() })),
       ],
     });
-    const manager = TestBed.inject(ZERO_INSTANCE_MANAGER);
+    const manager = TestBed.inject(ZERO_INSTANCE);
 
     // Observe rotations the way user code would: through an effect.
     const seen: string[] = [];
     effect(
       () => {
-        const z = manager.instance();
-        if (z) {
-          seen.push((z as unknown as { options: ZeroOptions }).options.userID ?? 'none');
-        }
+        const z = manager.zeroOrThrow();
+        seen.push((z as unknown as { options: ZeroOptions }).options.userID ?? 'none');
       },
       { injector: TestBed.inject(Injector) },
     );

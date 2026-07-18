@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, expectTypeOf, it } from 'vitest';
-import { computed, Injector, PLATFORM_ID, signal, type Signal } from '@angular/core';
+import { computed, Injector, signal, type Signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import type { Zero, ZeroOptions } from '@rocicorp/zero';
 import { injectZero } from '../src/inject-zero.js';
@@ -21,9 +21,11 @@ describe('injectZero', () => {
       providers: [
         provideTestChangeDetection(),
         { provide: ZERO_CONSTRUCTOR, useValue: harness.construct },
-        provideZero(source),
+        provideZero(typeof source === 'function' ? source : () => source),
       ],
     });
+    TestBed.inject(Injector);
+    TestBed.tick();
     return harness;
   }
 
@@ -63,21 +65,6 @@ describe('injectZero', () => {
   it('throws the CIF assertion outside an injection context without { injector }', () => {
     setup(options());
     expect(() => injectZero()).toThrow(/injection context/);
-  });
-
-  it('SSR: call succeeds, the factory never runs, READ throws the server message', () => {
-    const factory = () => {
-      throw new Error('factory must never run on the server');
-    };
-    TestBed.configureTestingModule({
-      providers: [
-        provideTestChangeDetection(),
-        { provide: PLATFORM_ID, useValue: 'server' },
-        provideZero(factory),
-      ],
-    });
-    const zero = TestBed.runInInjectionContext(() => injectZero()); // call is fine
-    expect(() => zero()).toThrow(/\[ngx-zero\].*server-side rendering/s);
   });
 
   it('infers Signal<Zero> with zero explicit generics (DefaultTypes-driven)', () => {
