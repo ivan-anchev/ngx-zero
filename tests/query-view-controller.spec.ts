@@ -19,6 +19,7 @@ class FakeTypedView {
     | undefined;
   unsubscribed = false;
   destroyed = false;
+  throwOnUnsubscribe = false;
   readonly ttlUpdates: TTL[] = [];
 
   constructor(
@@ -37,6 +38,9 @@ class FakeTypedView {
     listener(this.data, this.initialStatus);
     return () => {
       this.unsubscribed = true;
+      if (this.throwOnUnsubscribe) {
+        throw new Error('unsubscribe boom');
+      }
     };
   }
 
@@ -132,6 +136,70 @@ describe('QueryViewController', () => {
     second.emit([{ id: 'new' }], 'complete');
     expect(query.data()).toEqual([{ id: 'new' }]);
     expect(query.status()).toBe('complete');
+  });
+
+  it('releases the view and keeps stale writes dead when unsubscribe throws', () => {
+    const first = new FakeTypedView([{ id: 'old' }], 'complete');
+    first.throwOnUnsubscribe = true;
+    const second = new FakeTypedView([{ id: 'fresh' }], 'complete');
+    const zero = new MaterializeHarness([second]);
+    const seedZero = new MaterializeHarness([first]);
+    const query = controller();
+
+    query.reconcile(spec(seedZero, 'old'));
+    expect(() => query.reconcile(spec(zero, 'new'))).toThrow(/unsubscribe boom/);
+
+    expect(first.destroyed).toBe(true);
+    first.emit([{ id: 'stale' }], 'complete');
+    expect(query.data()).toEqual([{ id: 'old' }]);
+
+    const recovery = spec(zero, 'new');
+    query.retry(() => recovery);
+    expect(query.data()).toEqual([{ id: 'fresh' }]);
+  });
+
+  it('destroys every intermediate view under rapid key flapping and keeps the last key', () => {
+    const views = ['a', 'b', 'c', 'd', 'e'].map(
+      id => new FakeTypedView([{ id }], 'complete'),
+    );
+    const zero = new MaterializeHarness(views);
+    const query = controller();
+
+    for (const key of ['a', 'b', 'c', 'd', 'e']) {
+      query.reconcile(spec(zero, key));
+    }
+
+    expect(zero.requests).toHaveLength(5);
+    for (const view of views.slice(0, -1)) {
+      expect(view.unsubscribed).toBe(true);
+      expect(view.destroyed).toBe(true);
+    }
+    expect(views[4]!.destroyed).toBe(false);
+    expect(query.data()).toEqual([{ id: 'e' }]);
+  });
+
+  it('cleans up a mid-bridge destroy and ignores everything afterwards', () => {
+    const first = new FakeTypedView([{ id: 'old' }], 'complete');
+    const second = new FakeTypedView([], 'unknown');
+    const zero = new MaterializeHarness([first, second]);
+    const query = controller(true);
+
+    query.reconcile(spec(zero, 'old'));
+    query.reconcile(spec(zero, 'new'));
+    expect(query.data()).toEqual([{ id: 'old' }]);
+
+    query.destroy();
+
+    expect(second.unsubscribed).toBe(true);
+    expect(second.destroyed).toBe(true);
+
+    second.emit([{ id: 'late' }], 'complete');
+    expect(query.data()).toEqual([{ id: 'old' }]);
+    expect(query.status()).toBe('unknown');
+
+    query.reconcile(spec(zero, 'other'));
+    query.destroy();
+    expect(zero.requests).toHaveLength(2);
   });
 
   it('retries, forwards TTL, disables, and destroys the live session', () => {
