@@ -84,6 +84,70 @@ describe('provideZero', () => {
     expect(harness.created).toHaveLength(1);
   });
 
+  it('reconciles a bootstrap-window auth change in place instead of swallowing it', () => {
+    const auth = signal('t1');
+    const harness = fakeZeroHarness();
+
+    TestBed.configureTestingModule({
+      providers: [
+        provideTestChangeDetection(),
+        { provide: ZERO_CONSTRUCTOR, useValue: harness.construct },
+        provideZero(() => options({ auth: auth() })),
+      ],
+    });
+
+    TestBed.inject(ZERO_INSTANCE);
+    auth.set('t2');
+    TestBed.tick();
+
+    expect(harness.created).toHaveLength(1);
+    expect(harness.latest().connectCalls).toEqual([{ auth: 't2' }]);
+  });
+
+  it('recreates for a rotation fired before the first effect flush', () => {
+    const harness = fakeZeroHarness();
+
+    TestBed.configureTestingModule({
+      providers: [
+        provideTestChangeDetection(),
+        { provide: ZERO_CONSTRUCTOR, useValue: harness.construct },
+        provideZero(options()),
+      ],
+    });
+
+    TestBed.inject(ZERO_INSTANCE);
+    harness.latest().options.onClientStateNotFound?.();
+    TestBed.tick();
+
+    expect(harness.created).toHaveLength(2);
+    expect(harness.created[0]!.closeCalls).toBe(1);
+  });
+
+  it('fails bootstrap fast when an instance hook throws during the synchronous reconcile', () => {
+    const harness = fakeZeroHarness();
+    const feature = zeroFeature('bootstrap', [
+      {
+        provide: ZERO_INSTANCE_HOOKS,
+        multi: true,
+        useValue: {
+          onInstanceCreated: () => {
+            throw new Error('hook boom');
+          },
+        },
+      },
+    ]);
+
+    TestBed.configureTestingModule({
+      providers: [
+        provideTestChangeDetection(),
+        { provide: ZERO_CONSTRUCTOR, useValue: harness.construct },
+        provideZero(options(), feature),
+      ],
+    });
+
+    expect(() => TestBed.inject(ZERO_INSTANCE)).toThrow(/hook boom/);
+  });
+
   it('constructs from the reactive source', () => {
     const { harness, manager } = setup(options());
     expect(harness.created).toHaveLength(1);
