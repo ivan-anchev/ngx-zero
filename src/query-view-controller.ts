@@ -14,10 +14,18 @@ import type { QueryStatus } from './query-ref.js';
 
 export const DISABLED: unique symbol = Symbol('ngx-zero/disabled');
 
-export interface QuerySpec {
+export type QuerySpec = EnabledQuerySpec | DisabledQuerySpec;
+
+export interface EnabledQuerySpec {
   readonly zero: Zero;
-  readonly key: QueryKey | typeof DISABLED;
-  readonly request: AnyQueryOrRequest | undefined;
+  readonly key: QueryKey;
+  readonly request: AnyQueryOrRequest;
+}
+
+export interface DisabledQuerySpec {
+  readonly zero: Zero;
+  readonly key: typeof DISABLED;
+  readonly request: undefined;
 }
 
 interface ViewSession {
@@ -70,14 +78,6 @@ export class QueryViewController {
     const previous = this.#applied;
     this.#applied = spec;
 
-    const bridgeAllowed =
-      this.#keepPreviousData &&
-      !options.force &&
-      previous !== undefined &&
-      previous.key !== DISABLED &&
-      spec.key !== DISABLED &&
-      previous.zero === spec.zero;
-
     this.#teardown();
 
     if (spec.key === DISABLED) {
@@ -86,6 +86,13 @@ export class QueryViewController {
       this.#error.set(undefined);
       return;
     }
+
+    const bridgeAllowed =
+      this.#keepPreviousData &&
+      !options.force &&
+      previous !== undefined &&
+      previous.key !== DISABLED &&
+      previous.zero === spec.zero;
 
     this.#materialize(spec, bridgeAllowed);
   }
@@ -105,7 +112,7 @@ export class QueryViewController {
     }
   }
 
-  #materialize(spec: QuerySpec, bridgeAllowed: boolean): void {
+  #materialize(spec: EnabledQuerySpec, bridgeAllowed: boolean): void {
     const zero = spec.zero as unknown as {
       materialize(
         request: AnyQueryOrRequest,
@@ -113,7 +120,7 @@ export class QueryViewController {
       ): TypedView<unknown>;
     };
     const view = zero.materialize(
-      spec.request!,
+      spec.request,
       this.#ttl === undefined ? undefined : { ttl: this.#ttl },
     );
 
