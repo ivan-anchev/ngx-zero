@@ -7,7 +7,7 @@ import { mutators } from './zero/mutators';
 import { schema } from './zero/schema.gen';
 import './styles.css';
 
-await login('ada');
+await login('user1');
 
 void bootstrapApplication(App, {
   providers: [

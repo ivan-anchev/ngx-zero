@@ -1,25 +1,29 @@
 <header class="hero">
-  <div>
-    <p class="eyebrow">ngx-zero playground</p>
+  <div class="hero-copy">
+    <p class="product-name"><strong>ngx-zero</strong><span>Playground</span></p>
     <h1>Issues</h1>
     <p class="lede">
-      A real Zero backend: Postgres → zero-cache → this app. Mutations are
-      optimistic locally and authoritative on the server — try a title containing
-      “rollback” to watch the server reject it.
+      Optimistic mutations against a real Zero backend. Add “rollback” to a title
+      to see the server reject it.
     </p>
   </div>
-  <aside class="runtime">
-    <div>
-      <span>Signed in as</span>
-      <strong class="status"><i></i>{{ userID() }}</strong>
-    </div>
-    <div>
-      <span>Zero instances created</span>
-      <strong>{{ instanceCreations() }}</strong>
-    </div>
-    <div>
-      <span>Query state</span>
-      <strong>{{ queryState() }}</strong>
-    </div>
+  <aside class="runtime" aria-label="Runtime status">
+    <dl>
+      <div>
+        <dt>User</dt>
+        <dd class="status">
+          <i aria-hidden="true"></i>
+          {{ userID() }}
+        </dd>
+      </div>
+      <div>
+        <dt>Client starts</dt>
+        <dd>{{ instanceCreations() }}</dd>
+      </div>
+      <div>
+        <dt>Query</dt>
+        <dd>{{ queryState() }}</dd>
+      </div>
+    </dl>
   </aside>
 </header>

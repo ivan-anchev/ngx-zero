@@ -1,55 +1,109 @@
 .hero {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 32px;
+  display: block;
 }
 
-.eyebrow {
+.product-name {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   margin: 0;
-  font-size: 0.75rem;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: #4c6656;
+  font-size: 0.875rem;
+}
+
+.product-name strong {
+  color: var(--accent);
+}
+
+.product-name span {
+  color: var(--muted);
 }
 
 h1 {
-  margin: 0 0 8px;
-  font-size: 3rem;
+  margin: var(--space-2) 0 var(--space-1);
+  font-size: 2.5rem;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  text-wrap: balance;
 }
 
 .lede {
-  max-width: 560px;
+  max-width: 65ch;
   margin: 0;
-  color: #55605a;
+  font-size: 0.9375rem;
+  color: var(--muted);
+  text-wrap: pretty;
 }
 
 .runtime {
-  min-width: 260px;
-  border: 1px solid #d8ded6;
-  border-radius: 8px;
-  background: #fff;
-  font-size: 0.85rem;
+  margin-top: var(--space-6);
+  border-block: 1px solid var(--border);
+  font-size: 0.8125rem;
 }
 
-.runtime > div {
+.runtime dl {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0;
+}
+
+.runtime dl > div {
   display: flex;
   justify-content: space-between;
-  gap: 16px;
-  padding: 8px 12px;
+  gap: var(--space-4);
+  padding-block: var(--space-3);
 }
 
-.runtime > div + div {
-  border-top: 1px solid #e6eae4;
+.runtime dl > div + div {
+  margin-left: var(--space-4);
+  border-left: 1px solid var(--border);
+  padding-left: var(--space-4);
+}
+
+dt {
+  color: var(--muted);
+}
+
+dd {
+  margin: 0;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 0.75rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
 }
 
 .status i {
   display: inline-block;
-  width: 8px;
-  height: 8px;
-  margin-right: 6px;
+  width: 7px;
+  height: 7px;
+  margin-right: var(--space-2);
   border-radius: 50%;
-  background: #52a76c;
+  background: var(--positive);
+}
+
+.status i.pending {
+  background: var(--warning);
+  animation: blink 900ms ease-in-out infinite alternate;
+}
+
+@keyframes blink {
+  to {
+    opacity: 0.35;
+  }
+}
+
+@media (max-width: 760px) {
+  h1 {
+    font-size: 2.125rem;
+  }
+
+  .runtime dl > div + div {
+    margin-left: var(--space-2);
+    padding-left: var(--space-2);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status i.pending {
+    animation: none;
+  }
 }

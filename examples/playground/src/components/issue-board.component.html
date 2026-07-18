@@ -1,13 +1,26 @@
-<section class="board">
+<section class="board" aria-labelledby="issues-heading">
   <div class="board-heading">
-    <h2>{{ mineOnly() ? 'My issues' : 'All issues' }}</h2>
-    <span class="count">{{ openCount() }} open · {{ issues().length }} total</span>
+    <h2 id="issues-heading">{{ mineOnly() ? 'My issues' : 'All issues' }}</h2>
+    <div class="board-actions">
+      <span class="count" aria-label="Issue count">
+        {{ openCount() }} open · {{ issues().length }} total
+      </span>
+      <button
+        class="filter"
+        type="button"
+        [class.active]="mineOnly()"
+        [attr.aria-pressed]="mineOnly()"
+        (click)="filterToggled.emit()"
+      >
+        Mine only
+      </button>
+    </div>
   </div>
 
   @if (lastError()) {
-    <p class="notice error">{{ lastError() }}</p>
+    <p class="notice error" role="alert">{{ lastError() }}</p>
   } @else if (lastAction()) {
-    <p class="notice">{{ lastAction() }}</p>
+    <p class="notice" role="status">{{ lastAction() }}</p>
   }
 
   <ul class="issue-list">
@@ -19,19 +32,34 @@
             [checked]="issue.completed"
             (change)="toggle(issue)"
           />
-          <span>
+          <span class="issue-copy">
             <strong>{{ issue.title }}</strong>
-            <small>owned by {{ issue.ownerId }}</small>
+            <small>@{{ issue.ownerId }}</small>
           </span>
         </label>
-        <button class="danger" type="button" (click)="issueRemoved.emit(issue)">
-          Delete
+        <button
+          class="delete"
+          type="button"
+          [attr.aria-label]="'Delete ' + issue.title"
+          (click)="issueRemoved.emit(issue)"
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M3 4.5h10M6 2.5h4M5 6.5v5M8 6.5v5M11 6.5v5M4 4.5l.5 9h7l.5-9" />
+          </svg>
         </button>
       </li>
     } @empty {
-      <li class="empty">
-        <span>No issues synced yet — add one above.</span>
-      </li>
+      @if (loading()) {
+        <li class="skeleton" aria-label="Syncing issues">
+          <i></i><span></span>
+        </li>
+        <li class="skeleton" aria-hidden="true"><i></i><span></span></li>
+        <li class="skeleton" aria-hidden="true"><i></i><span></span></li>
+      } @else {
+        <li class="empty">
+          <span>No issues here yet. Add one above to start syncing.</span>
+        </li>
+      }
     }
   </ul>
 </section>

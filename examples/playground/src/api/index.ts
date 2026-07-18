@@ -34,7 +34,7 @@ async function authContext(c: Context): Promise<AuthContext> {
 const app = new Hono();
 
 app.get('/api/login', async c => {
-  const userID = c.req.query('user') ?? 'ada';
+  const userID = c.req.query('user') ?? 'user1';
   const ttl = Number(c.req.query('ttl') ?? 3600);
   const token = await new SignJWT({})
     .setProtectedHeader({ alg: 'HS256' })
