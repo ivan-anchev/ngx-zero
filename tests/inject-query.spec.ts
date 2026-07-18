@@ -1,4 +1,4 @@
-import { Component, signal } from '@angular/core';
+import { Component, ErrorHandler, Injector, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import {
   createBuilder,
@@ -80,6 +80,18 @@ const BridgingQueryHost = Component({ template: '' })(
   class {
     readonly issues = injectQuery(() => builder.issue.orderBy('id', 'asc'), {
       keepPreviousData: true,
+    });
+  },
+);
+
+const ThrowingThunkHost = Component({ template: '' })(
+  class {
+    readonly explode = signal(false);
+    readonly issues = injectQuery(() => {
+      if (this.explode()) {
+        throw new Error('thunk boom');
+      }
+      return builder.issue.orderBy('id', 'asc');
     });
   },
 );
@@ -258,6 +270,90 @@ describe('injectQuery', () => {
     await fixture.whenStable();
 
     expect(fixture.componentInstance.issues.data()).toMatchObject([{ id: 'i2' }]);
+  });
+
+  it('propagates an initial thunk throw without leaving a live view behind', async () => {
+    setup();
+    await createIssue('i1', 'first');
+    const zero = TestBed.inject(ZERO_INSTANCE).zeroOrThrow();
+    const materialize = vi.spyOn(zero, 'materialize');
+
+    expect(() =>
+      TestBed.runInInjectionContext(() =>
+        injectQuery((): ReturnType<typeof builder.issue.one> => {
+          throw new Error('thunk boom');
+        }),
+      ),
+    ).toThrow(/thunk boom/);
+    expect(materialize).not.toHaveBeenCalled();
+  });
+
+  it('routes a later thunk throw to ErrorHandler and keeps the prior view alive', async () => {
+    const errors: unknown[] = [];
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    TestBed.configureTestingModule({
+      rethrowApplicationErrors: false,
+      providers: [
+        provideTestChangeDetection(),
+        provideZeroTesting({ schema, mutators, logSink: { log: () => {} } }),
+        {
+          provide: ErrorHandler,
+          useValue: { handleError: (error: unknown) => errors.push(error) },
+        },
+      ],
+    });
+    await createIssue('i1', 'first');
+    const fixture = TestBed.createComponent(ThrowingThunkHost);
+    fixture.autoDetectChanges();
+    await fixture.whenStable();
+    expect(fixture.componentInstance.issues.data()).toMatchObject([{ id: 'i1' }]);
+
+    fixture.componentInstance.explode.set(true);
+    await fixture.whenStable();
+
+    expect(errors.some(error => /thunk boom/.test(String(error)))).toBe(true);
+    expect(fixture.componentInstance.issues.data()).toMatchObject([{ id: 'i1' }]);
+
+    await createIssue('i2', 'second');
+    await vi.waitFor(() =>
+      expect(fixture.componentInstance.issues.data()).toHaveLength(2),
+    );
+  });
+
+  it('works outside an injection context with an explicit { injector }', async () => {
+    setup();
+    await createIssue('i1', 'first');
+
+    const issues = injectQuery(() => builder.issue.orderBy('id', 'asc'), {
+      injector: TestBed.inject(Injector),
+    });
+
+    expect(issues.data()).toMatchObject([{ id: 'i1' }]);
+  });
+
+  it('throws the CIF assertion outside an injection context without { injector }', () => {
+    setup();
+    expect(() => injectQuery(() => builder.issue)).toThrow(/injection context/);
+  });
+
+  it('makes captured ref methods safe no-ops after host destruction', async () => {
+    setup();
+    await createIssue('i1', 'first');
+    const zero = TestBed.inject(ZERO_INSTANCE).zeroOrThrow();
+    const fixture = TestBed.createComponent(QueryHost);
+    fixture.autoDetectChanges();
+    await fixture.whenStable();
+    const issues = fixture.componentInstance.issues;
+    const materialize = vi.spyOn(zero, 'materialize');
+
+    fixture.destroy();
+
+    expect(() => {
+      issues.retry();
+      issues.updateTTL(60);
+    }).not.toThrow();
+    expect(materialize).not.toHaveBeenCalled();
+    expect(issues.data()).toMatchObject([{ id: 'i1' }]);
   });
 
   it('throws at inject time when provideZero is missing, naming the fix', () => {
