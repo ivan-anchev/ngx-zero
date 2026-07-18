@@ -20,11 +20,14 @@
     "@rocicorp/zero": "1.8.0",
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",
+    "hono": "^4.12.30",
+    "jose": "^6.2.3",
     "ngx-zero": "workspace:*",
     "pg": "^8.22.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@hono/vite-dev-server": "^0.26.1",
     "@types/pg": "^8.20.0",
     "drizzle-kit": "^0.31.10",
     "drizzle-zero": "^0.20.0",
