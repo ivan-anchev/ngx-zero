@@ -1,240 +1,160 @@
-:root {
-  font-family:
-    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-    sans-serif;
-  color: #18201d;
-  background: #edf1e9;
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-}
-
-* {
-  box-sizing: border-box;
-}
-
 body {
-  min-width: 320px;
-  min-height: 100vh;
   margin: 0;
-  background:
-    radial-gradient(circle at 12% 6%, rgba(207, 255, 174, 0.9), transparent 26rem),
-    linear-gradient(160deg, #f6f4ec 0%, #e4ebe2 100%);
-}
-
-button,
-input {
-  font: inherit;
-}
-
-button {
-  border: 0;
-  cursor: pointer;
-}
-
-button:focus-visible,
-input:focus-visible {
-  outline: 3px solid rgba(24, 32, 29, 0.22);
-  outline-offset: 2px;
-}
-
-button:disabled,
-input:disabled {
-  cursor: wait;
-  opacity: 0.55;
+  font-family: system-ui, sans-serif;
+  color: #1c2321;
+  background: #f2f4f0;
 }
 
 .shell {
-  width: min(1040px, calc(100% - 32px));
+  max-width: 960px;
   margin: 0 auto;
-  padding: 56px 0 72px;
+  padding: 48px 16px;
 }
 
 .hero {
-  display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(300px, 0.8fr);
-  gap: 40px;
-  align-items: end;
-  padding: 0 6px 34px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 32px;
 }
 
 .eyebrow {
-  margin: 0 0 9px;
-  color: #42634e;
-  font-size: 0.72rem;
-  font-weight: 800;
-  letter-spacing: 0.14em;
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-}
-
-h1,
-h2,
-p {
-  margin-top: 0;
+  color: #4c6656;
 }
 
 h1 {
-  max-width: 700px;
-  margin-bottom: 12px;
-  font-family: Georgia, "Times New Roman", serif;
-  font-size: clamp(3.2rem, 8vw, 6.7rem);
-  font-weight: 500;
-  letter-spacing: -0.065em;
-  line-height: 0.87;
+  margin: 0 0 8px;
+  font-size: 3rem;
+}
+
+h2 {
+  margin: 0;
+  font-size: 1.5rem;
 }
 
 .lede {
-  max-width: 600px;
-  margin-bottom: 0;
-  color: #53605a;
-  font-size: 1.05rem;
-  line-height: 1.6;
+  max-width: 560px;
+  margin: 0;
+  color: #55605a;
 }
 
 .runtime {
-  overflow: hidden;
-  border: 1px solid rgba(24, 32, 29, 0.12);
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.48);
-  box-shadow: 0 18px 50px rgba(49, 65, 55, 0.08);
-  backdrop-filter: blur(14px);
+  min-width: 260px;
+  border: 1px solid #d8ded6;
+  border-radius: 8px;
+  background: #fff;
+  font-size: 0.85rem;
 }
 
 .runtime > div {
   display: flex;
-  align-items: center;
   justify-content: space-between;
-  gap: 20px;
-  padding: 13px 16px;
-  border-bottom: 1px solid rgba(24, 32, 29, 0.08);
+  gap: 16px;
+  padding: 8px 12px;
 }
 
-.runtime > div:last-child {
-  border-bottom: 0;
-}
-
-.runtime span {
-  color: #66716b;
-  font-size: 0.78rem;
-}
-
-.runtime strong {
-  font-size: 0.82rem;
-}
-
-.status {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
+.runtime > div + div {
+  border-top: 1px solid #e6eae4;
 }
 
 .status i {
-  width: 7px;
-  height: 7px;
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
   border-radius: 50%;
   background: #52a76c;
-  box-shadow: 0 0 0 4px rgba(82, 167, 108, 0.13);
 }
 
 .toolbar,
 .board {
-  border: 1px solid rgba(24, 32, 29, 0.12);
-  background: rgba(255, 255, 255, 0.76);
-  box-shadow: 0 24px 65px rgba(43, 55, 48, 0.1);
+  margin-top: 24px;
+  border: 1px solid #d8ded6;
+  border-radius: 8px;
+  padding: 16px;
+  background: #fff;
 }
 
 .toolbar {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 30px;
-  align-items: end;
-  padding: 24px;
-  border-radius: 22px 22px 0 0;
-  border-bottom-color: rgba(24, 32, 29, 0.06);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
 }
 
 .toolbar label,
 .user-switcher > span {
   display: block;
-  margin-bottom: 8px;
-  color: #66716b;
+  margin-bottom: 6px;
   font-size: 0.75rem;
   font-weight: 700;
+  color: #66716b;
 }
 
 .input-row {
   display: flex;
-  gap: 10px;
+  gap: 8px;
 }
 
-input {
-  width: min(440px, 52vw);
-  min-height: 44px;
-  border: 1px solid #cbd3ca;
-  border-radius: 11px;
-  padding: 0 13px;
-  color: #18201d;
-  background: #fff;
+.user-switcher button {
+  margin: 0 6px 4px 0;
+}
+
+.input-row input {
+  min-width: 280px;
+  border: 1px solid #c6cec5;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font: inherit;
 }
 
 button {
-  min-height: 42px;
-  border-radius: 10px;
-  padding: 0 15px;
-  color: #26302b;
-  background: #e8ece7;
-  font-size: 0.82rem;
-  font-weight: 750;
-  transition: transform 120ms ease, background 120ms ease;
-}
-
-button:hover:not(:disabled) {
-  transform: translateY(-1px);
-  background: #dfe5dd;
+  font: inherit;
+  border: 1px solid #d0d6cf;
+  border-radius: 6px;
+  padding: 8px 12px;
+  background: #eef1ed;
+  cursor: pointer;
 }
 
 button.primary {
+  border-color: #1c2321;
+  background: #1c2321;
   color: #fff;
-  background: #18201d;
 }
 
-button.primary:hover:not(:disabled) {
-  background: #2d3933;
-}
-
-.board {
-  padding: 30px 24px 20px;
-  border-radius: 0 0 22px 22px;
+button.danger {
+  border-color: #ecd6d2;
+  background: #faefed;
+  color: #9b4b45;
 }
 
 .board-heading {
   display: flex;
-  align-items: end;
+  align-items: baseline;
   justify-content: space-between;
-  gap: 24px;
-  padding: 0 4px 22px;
-}
-
-h2 {
-  margin-bottom: 0;
-  font-family: Georgia, "Times New Roman", serif;
-  font-size: clamp(1.8rem, 4vw, 2.7rem);
-  font-weight: 500;
-  letter-spacing: -0.035em;
+  gap: 16px;
 }
 
 .count {
+  font-size: 0.8rem;
   color: #66716b;
-  font-size: 0.78rem;
-  white-space: nowrap;
 }
 
 .notice {
-  margin: 0 4px 14px;
-  border-radius: 10px;
-  padding: 10px 12px;
+  margin: 12px 0 0;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 0.85rem;
   color: #315f3e;
   background: #e6f4e8;
-  font-size: 0.8rem;
 }
 
 .notice.error {
@@ -244,8 +164,8 @@ h2 {
 
 .issue-list {
   display: grid;
-  gap: 9px;
-  margin: 0;
+  gap: 8px;
+  margin: 16px 0 0;
   padding: 0;
   list-style: none;
 }
@@ -254,11 +174,10 @@ h2 {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 20px;
-  min-height: 74px;
-  border: 1px solid #e0e5df;
-  border-radius: 14px;
-  padding: 12px 13px 12px 16px;
+  gap: 16px;
+  border: 1px solid #e2e7e0;
+  border-radius: 6px;
+  padding: 10px 12px;
   background: #fff;
 }
 
@@ -266,28 +185,17 @@ h2 {
   display: flex;
   flex: 1;
   align-items: center;
-  gap: 13px;
+  gap: 10px;
   cursor: pointer;
-}
-
-.issue-list input[type="checkbox"] {
-  width: 19px;
-  min-height: 19px;
-  accent-color: #315f3e;
 }
 
 .issue-list label span {
   display: grid;
-  gap: 4px;
-}
-
-.issue-list strong {
-  font-size: 0.92rem;
+  gap: 2px;
 }
 
 .issue-list small {
   color: #7a847e;
-  font-size: 0.7rem;
 }
 
 .issue-list li.completed strong {
@@ -295,91 +203,8 @@ h2 {
   text-decoration: line-through;
 }
 
-button.danger {
-  min-height: 34px;
-  color: #9b4b45;
-  background: #faefed;
-}
-
-button.danger:hover:not(:disabled) {
-  background: #f6dfdc;
-}
-
 .issue-list li.empty {
-  display: grid;
   justify-content: center;
-  min-height: 160px;
+  padding: 32px;
   color: #68736d;
-  text-align: center;
-}
-
-.empty span {
-  margin-top: -26px;
-  font-size: 0.82rem;
-}
-
-.debug-strip {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 9px 22px;
-  padding: 20px 5px 0;
-  color: #768079;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.67rem;
-}
-
-.debug-strip b {
-  color: #26302b;
-}
-
-@media (max-width: 760px) {
-  .shell {
-    width: min(100% - 20px, 620px);
-    padding-top: 32px;
-  }
-
-  .hero,
-  .toolbar {
-    grid-template-columns: 1fr;
-  }
-
-  .hero {
-    gap: 24px;
-  }
-
-  .toolbar {
-    align-items: stretch;
-  }
-
-  .input-row {
-    flex-direction: column;
-  }
-
-  input {
-    width: 100%;
-  }
-}
-
-@media (max-width: 480px) {
-  .shell {
-    width: calc(100% - 12px);
-  }
-
-  .hero {
-    padding-inline: 10px;
-  }
-
-  .toolbar,
-  .board {
-    padding-inline: 15px;
-  }
-
-  .board-heading {
-    align-items: start;
-    flex-direction: column;
-  }
-
-  .issue-list li {
-    align-items: flex-start;
-  }
 }
