@@ -1,4 +1,10 @@
-import type { AnyQuery, ReadonlyJSONValue } from '@rocicorp/zero';
+import type {
+  AnyQuery,
+  ReadonlyJSONValue,
+  TTL,
+  TypedView,
+  Zero,
+} from '@rocicorp/zero';
 import { asQueryInternals, queryInternalsTag } from '@rocicorp/zero/bindings';
 import { ngxZeroError } from './errors.js';
 
@@ -32,6 +38,25 @@ export function queryIdentityKey(value: AnyQueryOrRequest): QueryKey {
   return `query:${internals.hash()}:${stableStringify(
     internals.format as ReadonlyJSONValue,
   )}`;
+}
+
+/**
+ * Runtime boundary for materialization: `AnyQueryOrRequest` carries only the
+ * runtime identity fields, while `zero.materialize` demands Zero's fully
+ * branded query generics. This is the one deliberate cast bridging the two.
+ */
+export function materializeQuery(
+  zero: Zero,
+  request: AnyQueryOrRequest,
+  options?: { ttl?: TTL },
+): TypedView<unknown> {
+  const looselyTypedZero = zero as unknown as {
+    materialize(
+      request: AnyQueryOrRequest,
+      options?: { ttl?: TTL },
+    ): TypedView<unknown>;
+  };
+  return looselyTypedZero.materialize(request, options);
 }
 
 function stableStringify(value: ReadonlyJSONValue | undefined): string {

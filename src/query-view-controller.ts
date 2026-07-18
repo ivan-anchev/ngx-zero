@@ -6,9 +6,10 @@ import type {
   TypedView,
   Zero,
 } from '@rocicorp/zero';
-import type {
-  AnyQueryOrRequest,
-  QueryKey,
+import {
+  materializeQuery,
+  type AnyQueryOrRequest,
+  type QueryKey,
 } from './query-identity.js';
 import type { QueryStatus } from './query-ref.js';
 
@@ -113,13 +114,8 @@ export class QueryViewController {
   }
 
   #materialize(spec: EnabledQuerySpec, bridgeAllowed: boolean): void {
-    const zero = spec.zero as unknown as {
-      materialize(
-        request: AnyQueryOrRequest,
-        options?: { ttl?: TTL },
-      ): TypedView<unknown>;
-    };
-    const view = zero.materialize(
+    const view = materializeQuery(
+      spec.zero,
       spec.request,
       this.#ttl === undefined ? undefined : { ttl: this.#ttl },
     );
