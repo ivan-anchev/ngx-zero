@@ -59,11 +59,18 @@ class FakeTypedView {
 
 class MaterializeHarness {
   readonly requests: unknown[] = [];
+  readonly optionsSeen: Array<{ ttl?: TTL } | undefined> = [];
+  failNext = false;
 
   constructor(readonly views: FakeTypedView[]) {}
 
-  materialize(request: unknown): TypedView<unknown> {
+  materialize(request: unknown, options?: { ttl?: TTL }): TypedView<unknown> {
+    if (this.failNext) {
+      this.failNext = false;
+      throw new Error('materialize boom');
+    }
     this.requests.push(request);
+    this.optionsSeen.push(options);
     const view = this.views[this.requests.length - 1];
     if (!view) {
       throw new Error('no fake view configured');
@@ -200,6 +207,77 @@ describe('QueryViewController', () => {
     query.reconcile(spec(zero, 'other'));
     query.destroy();
     expect(zero.requests).toHaveLength(2);
+  });
+
+  it('treats retry as a no-op while disabled and after destroy', () => {
+    const view = new FakeTypedView([{ id: 'i1' }], 'complete');
+    const zero = new MaterializeHarness([view]);
+    const disabled: QuerySpec = {
+      zero: zero as unknown as Zero,
+      key: DISABLED,
+      request: undefined,
+    };
+    const query = controller();
+
+    query.reconcile(disabled);
+    query.retry(() => disabled);
+    expect(zero.requests).toHaveLength(0);
+    expect(query.status()).toBe('disabled');
+
+    const enabled = spec(zero, 'all');
+    query.reconcile(enabled);
+    expect(zero.requests).toHaveLength(1);
+
+    query.destroy();
+    query.retry(() => enabled);
+    expect(zero.requests).toHaveLength(1);
+  });
+
+  it('hard-refreshes on retry during a bridge instead of keeping previous data', () => {
+    const first = new FakeTypedView([{ id: 'old' }], 'complete');
+    const second = new FakeTypedView([], 'unknown');
+    const third = new FakeTypedView([], 'unknown');
+    const zero = new MaterializeHarness([first, second, third]);
+    const query = controller(true);
+
+    query.reconcile(spec(zero, 'old'));
+    const next = spec(zero, 'new');
+    query.reconcile(next);
+    expect(query.data()).toEqual([{ id: 'old' }]);
+
+    query.retry(() => next);
+
+    expect(second.destroyed).toBe(true);
+    expect(zero.requests).toHaveLength(3);
+    expect(query.data()).toEqual([]);
+    expect(query.status()).toBe('unknown');
+  });
+
+  it('keeps prior signals on materialization failure and recovers via retry', () => {
+    const first = new FakeTypedView([{ id: 'old' }], 'complete');
+    const second = new FakeTypedView([{ id: 'fresh' }], 'complete');
+    const zero = new MaterializeHarness([first, second]);
+    const query = controller();
+
+    query.reconcile(spec(zero, 'old'));
+
+    const next = spec(zero, 'new');
+    zero.failNext = true;
+    expect(() => query.reconcile(next)).toThrow(/materialize boom/);
+
+    expect(first.destroyed).toBe(true);
+    expect(query.data()).toEqual([{ id: 'old' }]);
+    expect(query.status()).toBe('complete');
+
+    query.updateTTL(42);
+    expect(first.ttlUpdates).toEqual([]);
+
+    query.reconcile(next);
+    expect(zero.requests).toHaveLength(1);
+
+    query.retry(() => next);
+    expect(query.data()).toEqual([{ id: 'fresh' }]);
+    expect(query.status()).toBe('complete');
   });
 
   it('retries, forwards TTL, disables, and destroys the live session', () => {
