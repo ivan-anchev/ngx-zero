@@ -45,11 +45,8 @@ export function pairwiseComputed<T>(computation: () => T) {
     const current = source();
 
     if (state.first) {
-      state = {
-        previous: current,
-        current: current,
-        first: false,
-      };
+      state = { previous: undefined, current, first: false };
+      return undefined;
     }
 
     state.previous = state.current;
