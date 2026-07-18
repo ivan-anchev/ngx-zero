@@ -1,9 +1,9 @@
 packages:
   - 'examples/*'
 
-# Dependency build scripts are deliberately disabled: @rocicorp/zero-sqlite3 is
-# server-side only, esbuild/protobufjs work fine without their postinstall.
+# esbuild/protobufjs work fine without their postinstall. zero-sqlite3 must
+# build: the playground runs zero-cache, which needs the native module.
 allowBuilds:
-  '@rocicorp/zero-sqlite3': false
+  '@rocicorp/zero-sqlite3': true
   esbuild: false
   protobufjs: false
