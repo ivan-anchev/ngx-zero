@@ -25,6 +25,7 @@ class FakeTypedView {
   constructor(
     readonly data: unknown,
     readonly initialStatus: ResultType,
+    readonly initialError?: ErroredQuery,
   ) {}
 
   addListener(
@@ -35,7 +36,7 @@ class FakeTypedView {
     ) => void,
   ): () => void {
     this.listener = listener;
-    listener(this.data, this.initialStatus);
+    listener(this.data, this.initialStatus, this.initialError);
     return () => {
       this.unsubscribed = true;
       if (this.throwOnUnsubscribe) {
@@ -286,6 +287,21 @@ describe('QueryViewController', () => {
     enabled.reconcile(spec(enableZero, 'all'));
     expect(enabled.data()).toEqual([]);
     expect(enabled.status()).toBe('unknown');
+  });
+
+  it('surfaces an initial error emission instead of bridging', () => {
+    const boom = { name: 'boom' } as unknown as ErroredQuery;
+    const first = new FakeTypedView([{ id: 'old' }], 'complete');
+    const second = new FakeTypedView([], 'error', boom);
+    const zero = new MaterializeHarness([first, second]);
+    const query = controller(true);
+
+    query.reconcile(spec(zero, 'old'));
+    query.reconcile(spec(zero, 'new'));
+
+    expect(query.data()).toEqual([]);
+    expect(query.status()).toBe('error');
+    expect(query.error()).toBe(boom);
   });
 
   it('bridges an empty one() miss and holds until the new view emits', () => {

@@ -371,6 +371,32 @@ describe('injectQuery', () => {
     );
   });
 
+  it('propagates a throwing thunk to the retry caller', async () => {
+    const errors: unknown[] = [];
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    TestBed.configureTestingModule({
+      rethrowApplicationErrors: false,
+      providers: [
+        provideTestChangeDetection(),
+        provideZeroTesting({ schema, mutators, logSink: { log: () => {} } }),
+        {
+          provide: ErrorHandler,
+          useValue: { handleError: (error: unknown) => errors.push(error) },
+        },
+      ],
+    });
+    await createIssue('i1', 'first');
+    const fixture = TestBed.createComponent(ThrowingThunkHost);
+    fixture.autoDetectChanges();
+    await fixture.whenStable();
+
+    fixture.componentInstance.explode.set(true);
+    await fixture.whenStable();
+
+    expect(() => fixture.componentInstance.issues.retry()).toThrow(/thunk boom/);
+    expect(fixture.componentInstance.issues.data()).toMatchObject([{ id: 'i1' }]);
+  });
+
   it('works outside an injection context with an explicit { injector }', async () => {
     setup();
     await createIssue('i1', 'first');
