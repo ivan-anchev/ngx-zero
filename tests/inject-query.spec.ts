@@ -84,6 +84,21 @@ const BridgingQueryHost = Component({ template: '' })(
   },
 );
 
+const BridgingSwitchHost = Component({ template: '' })(
+  class {
+    readonly filter = signal<string | undefined>(undefined);
+    readonly issues = injectQuery(
+      () => {
+        const id = this.filter();
+        return id === undefined
+          ? builder.issue.orderBy('id', 'asc')
+          : builder.issue.where('id', id);
+      },
+      { keepPreviousData: true },
+    );
+  },
+);
+
 const ThrowingThunkHost = Component({ template: '' })(
   class {
     readonly explode = signal(false);
@@ -270,6 +285,42 @@ describe('injectQuery', () => {
     await fixture.whenStable();
 
     expect(fixture.componentInstance.issues.data()).toMatchObject([{ id: 'i2' }]);
+  });
+
+  it('bridges a key change over an empty new view until it emits', async () => {
+    setup();
+    await createIssue('i1', 'first');
+    await createIssue('i2', 'second');
+    const fixture = TestBed.createComponent(BridgingSwitchHost);
+    fixture.autoDetectChanges();
+    await fixture.whenStable();
+    expect(fixture.componentInstance.issues.data()).toHaveLength(2);
+
+    fixture.componentInstance.filter.set('i9');
+    await fixture.whenStable();
+
+    expect(fixture.componentInstance.issues.data()).toHaveLength(2);
+    expect(fixture.componentInstance.issues.status()).toBe('unknown');
+    expect(fixture.componentInstance.issues.isComplete()).toBe(false);
+
+    await createIssue('i9', 'bridged');
+    await vi.waitFor(() =>
+      expect(fixture.componentInstance.issues.data()).toMatchObject([{ id: 'i9' }]),
+    );
+  });
+
+  it('lets fresh local rows for the new key win over the bridge', async () => {
+    setup();
+    await createIssue('i1', 'first');
+    await createIssue('i2', 'second');
+    const fixture = TestBed.createComponent(BridgingSwitchHost);
+    fixture.autoDetectChanges();
+    await fixture.whenStable();
+
+    fixture.componentInstance.filter.set('i1');
+    await fixture.whenStable();
+
+    expect(fixture.componentInstance.issues.data()).toMatchObject([{ id: 'i1' }]);
   });
 
   it('propagates an initial thunk throw without leaving a live view behind', async () => {
