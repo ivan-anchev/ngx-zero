@@ -4,7 +4,8 @@ import { bootstrapApplication } from '@angular/platform-browser';
 import { provideZero, withBootstrap } from 'ngx-zero';
 import { App } from './app';
 import { activeUserID, auth, initializeInstance } from './playground-state';
-import { mutators, schema } from './schema';
+import { mutators } from './zero/mutators';
+import { schema } from './zero/schema.gen';
 import './styles.css';
 
 // Local-only mutations never receive a server acknowledgement. Keep the
@@ -20,6 +21,7 @@ void bootstrapApplication(App, {
         schema,
         mutators,
         userID: activeUserID(),
+        context: { userID: activeUserID() },
         auth: auth(),
         cacheURL: null,
         server: null,

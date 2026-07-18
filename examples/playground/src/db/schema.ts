@@ -5,7 +5,7 @@ import { boolean, doublePrecision, pgTable, text } from 'drizzle-orm/pg-core';
 export const issue = pgTable('issue', {
   id: text('id').primaryKey(),
   title: text('title').notNull(),
-  completed: boolean('completed').notNull().default(false),
+  completed: boolean('completed').notNull(),
   ownerId: text('ownerId').notNull(),
   createdAt: doublePrecision('createdAt').notNull(),
 });

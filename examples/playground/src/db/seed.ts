@@ -3,7 +3,7 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import { issue } from './schema';
 
-const pool = new Pool({ connectionString: process.env.ZERO_UPSTREAM_DB });
+const pool = new Pool({ connectionString: process.env['ZERO_UPSTREAM_DB'] });
 const db = drizzle(pool);
 
 const starterIssues = [
