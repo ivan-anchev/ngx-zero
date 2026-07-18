@@ -15,6 +15,11 @@ import type { QueryStatus } from './query-ref.js';
 
 export const DISABLED: unique symbol = Symbol('ngx-zero/disabled');
 
+/**
+ * Produced by the spec computed in inject-query.ts. That computed's custom
+ * `equal` on `(zero, key)` hands `reconcile()` a new reference exactly when
+ * the semantic identity changed — so reference comparison IS the fast path.
+ */
 export type QuerySpec = EnabledQuerySpec | DisabledQuerySpec;
 
 export interface EnabledQuerySpec {
@@ -29,6 +34,7 @@ export interface DisabledQuerySpec {
   readonly request: undefined;
 }
 
+/** One materialization = one session. `alive` is the stale-write guard. */
 interface ViewSession {
   alive: boolean;
   view: TypedView<unknown>;
@@ -67,6 +73,13 @@ export class QueryViewController {
     return this.#error.asReadonly();
   }
 
+  /**
+   * Called eagerly at injectQuery() time, from the tracking effect on every
+   * identity change, and from retry() with force. A throwing thunk throws in
+   * the spec computed before this runs, so a live view is never torn down
+   * for an error. If materialize throws here, no session is installed, the
+   * signals keep their previous values, and retry() is the recovery path.
+   */
   reconcile(spec: QuerySpec, options: { force?: boolean } = {}): void {
     if (this.#destroyed) {
       return;
@@ -88,6 +101,8 @@ export class QueryViewController {
       return;
     }
 
+    // Bridge only a same-instance enabled->enabled key change, never a
+    // forced retry and never an instance swap (no old-user data flash).
     const bridgeAllowed =
       this.#keepPreviousData &&
       !options.force &&
@@ -98,6 +113,11 @@ export class QueryViewController {
     this.#materialize(spec, bridgeAllowed);
   }
 
+  /**
+   * Never touches the public signals: enabled->enabled is overwritten by the
+   * new session's synchronous first emission in the same reconcile step, and
+   * enabled->disabled resets explicitly in reconcile().
+   */
   #teardown(): void {
     const session = this.#session;
     if (!session) {
@@ -105,11 +125,11 @@ export class QueryViewController {
     }
 
     this.#session = undefined;
-    session.alive = false;
+    session.alive = false; // stale-write guard first, then detach
     try {
       session.unsubscribe();
     } finally {
-      session.view.destroy();
+      session.view.destroy(); // release the IVM view even if unsubscribe threw
     }
   }
 
@@ -134,6 +154,9 @@ export class QueryViewController {
 
       if (isInitialEmission) {
         isInitialEmission = false;
+        // The bridge is skipping this initial overwrite: only when the new
+        // view would otherwise flash empty at 'unknown'. Data keeps the
+        // previous key's rows; status honestly belongs to the new view.
         if (
           bridgeAllowed &&
           resultType === 'unknown' &&
@@ -145,15 +168,20 @@ export class QueryViewController {
         }
       }
 
+      // Single write path: observers only ever see a consistent triple.
       this.#data.set(data);
       this.#status.set(resultType);
       this.#error.set(resultType === 'error' ? error : undefined);
     };
 
+    // addListener fires synchronously with the current (data, resultType,
+    // error) — verified in zero@1.8.0 — so the initial emission seeds all
+    // three signals before materialize() returns.
     session.unsubscribe = view.addListener(listener);
     this.#session = session;
   }
 
+  /** `untracked` so it is callable from templates and effects without deps. */
   retry(currentSpec: () => QuerySpec): void {
     if (this.#destroyed) {
       return;
@@ -178,9 +206,12 @@ export class QueryViewController {
     }
     this.#destroyed = true;
     this.#teardown();
+    // Signals stay as-is: the host is gone, resetting would only trigger a
+    // pointless change-detection notification during teardown.
   }
 }
 
+/** Empty for both shapes: [] (list) or undefined (.one() miss). */
 function isEmptyResult(data: unknown): boolean {
   return data === undefined || (Array.isArray(data) && data.length === 0);
 }
