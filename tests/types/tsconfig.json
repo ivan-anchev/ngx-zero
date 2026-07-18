@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": "../..",
+    // No d.ts emit here — also avoids TS2742 "not portable" on inferred
+    // schema types that reference Zero-internal paths.
+    "declaration": false
+  },
+  "include": ["./**/*.ts"],
+  // Override the root's exclude (which shuts out this very directory).
+  "exclude": []
+}

@@ -74,23 +74,51 @@ readonly close  = injectMutation(mutators.issue.close);
   still independently awaitable. (Revisit if per-call tracking is needed.)
 - Known upstream limitation: mutators cannot return data on success (documented).
 
-### `injectZero(): Signal<Zero<S, MD, C>>`
+### `injectZero(options?): Signal<Zero>` — implemented
 
-- Returns a **Signal**, not a raw instance: the instance is recreated on login/logout/
-  userID change, and a captured raw reference throws after `close()`. Solid's `useZero`
-  is an accessor for the same reason. Escape hatch for `z().preload(...)`, inspector, etc.
+- Returns the current instance as a signal so consumers follow instance replacement.
+- Uses the current injection context, or an explicit `{ injector }` outside one.
+- Throws with setup guidance when `provideZero(...)` is missing.
 
-### `provideZero(optionsOrFactory)`
+### `provideZero(source, ...features)` — implemented
 
 - Accepts static options, a reactive factory (may read signals; runs in injection
-  context so it can `inject()`), or `{ zero }` for an externally-owned instance.
-- Instance lifecycle mirrors the official React/Solid providers:
-  - any option change **except** `auth` string rotation → `close()` + recreate
-  - `auth` string→string → `zero.connection.connect({auth})` in place
-  - auth added/removed or `userID` change → recreate
-  - wraps `onClientStateNotFound` → in-place instance rotation (no `location.reload()`)
-- `close()` on `EnvironmentInjector` destroy.
-- **Browser-only construction** (SSR: see below).
+  context so it can `inject()`), or `{ zero }` for an externally-owned instance,
+  plus rest-param features such as `withBootstrap(...)`.
+- One internal manager owns reconciliation. The environment initializer starts one
+  effect; the first instance is created on that effect's initial flush.
+
+Lifecycle verdicts (diff of previous vs next factory output):
+
+| Transition | Verdict | Action |
+|---|---|---|
+| identical rerun | `noop` | nothing |
+| `auth` string→string | `connect` | `zero.connection.connect({auth})` in place |
+| `auth` added/removed, or another option changes | `recreate` | create the replacement and close the previous owned instance |
+| `onClientStateNotFound` without a user callback | rotation | recreate with the current options |
+| `onClientStateNotFound` with a user callback | user-owned | invoke the callback without automatic rotation |
+| `{ zero }` external source | adopt | use it without constructing or closing it |
+
+- **Equality stance**: every option except `auth` and
+  `onClientStateNotFound` is compared at the top level with `Object.is`, matching
+  React dependency semantics. Fresh object, array, and function values therefore
+  recreate the instance even when structurally equivalent; callers should keep
+  those references stable when they do not intend a recreate. No hardcoded
+  `ZeroOptions` key list: the diff uses the union of own keys.
+- `close()` is unawaited on replacement and environment destruction. External
+  instances are never closed by the library.
+- Constructor failures are reported through `ErrorHandler`; an existing current
+  instance is preserved.
+- `withBootstrap(fn)` runs after every owned construction, in injection context.
+  It does not run for external instances. Duplicate feature kinds are rejected.
+
+### `provideZeroTesting(options, ...features)` — implemented
+
+- Fully functional **local** Zero (real IVM, real mutators, no network) for
+  TestBed. Forced at type + runtime: `cacheURL: null`, `server: null`.
+  Defaulted but overridable: `kvStore: 'mem'`, `logLevel: 'error'`.
+- Factory form preserved — lifecycle tests drive reconciliation through the
+  preset exactly like production.
 
 ### Also v1
 
@@ -98,14 +126,12 @@ readonly close  = injectMutation(mutators.issue.close);
   `zero.connection.state`; `'needs-auth'` is the auth-refresh signal.
 - Route-resolver/guard `preload` helper (`zeroPreload(queryThunk)`) — Angular-native,
   no other binding has it. Preload TTL default `'none'` per upstream guidance.
-- `provideZeroTesting(partialOptions?)` — `cacheURL: null` + `kvStore: 'mem'` gives a
-  fully functional local Zero in unit tests, no server.
+- `provideZeroTesting` — implemented; see its section above.
 
 ## SSR (v1 stance)
 
-Server render: do **not** construct Zero; refs hold defaults (`[]`/`undefined`, status
-`'unknown'`). Never hold a `PendingTasks` task open for a live view (never settles →
-SSR hangs). v1.1: evaluate zero-vue's mem-store-on-server pattern + `TransferState`.
+There is no server-specific branch yet: `provideZero` currently follows the same
+lifecycle on the server. An inert or memory-store SSR strategy is deferred.
 
 ## Packaging
 
@@ -133,14 +159,3 @@ twice a week so upstream changes page us, not users.
 - Suspense analog: `whenComplete(): Promise` on `QueryRef` for `@defer (when ...)`.
 - Multi-instance DX (`storageKey`): named injection tokens vs factory-scoped helpers.
 - `debounced()`-style helpers for search-as-you-type queries.
-- First-class auth refresh: `withAuthRefresh(() => Promise<string>)` on `provideZero` —
-  the library would subscribe to the `'needs-auth'` connection state, call the refresh
-  fn, and push the token via `connection.connect({auth})`, instead of every app
-  hand-wiring `injectConnectionState()` → refresh → auth-signal write. The reactive
-  options factory already handles the happy path (auth signal: string→string rotation
-  connects in place; presence change or userID change recreates the instance — a token
-  change does NOT reset the client). Caution before committing: upstream *removed*
-  `auth: () => Promise<string>` in favor of explicit string + `connect()`, so we'd be
-  re-adding a shape they deleted — needs answers for concurrent-refresh dedup,
-  refresh-failure backoff, and giving up (surface `'needs-auth'` to the app after N
-  failures rather than looping).

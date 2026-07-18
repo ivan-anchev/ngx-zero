@@ -1,16 +1,5 @@
-/**
- * ngx-zero — signals-first, zoneless-ready Angular bindings for Rocicorp Zero.
- *
- * Status: design phase. The agreed public API surface is documented in
- * docs/DESIGN.md; implementation lands behind it.
- *
- * Planned exports:
- *   provideZero(optionsOrFactory)
- *   injectQuery(() => queryOrRequest, options?)
- *   injectMutation(mutator, options?)
- *   injectZero()
- *   injectConnectionState()
- *   provideZeroTesting(options?)
- */
-
-export const VERSION = '0.0.0';
+export { provideZero } from './provide-zero.js';
+export { injectZero } from './inject-zero.js';
+export { provideZeroTesting, type ZeroTestingOptions } from './provide-zero-testing.js';
+export { withBootstrap } from './with-bootstrap.js';
+export type { ZeroFeature, ZeroFeatureKind } from './features.js';

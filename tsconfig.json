@@ -19,5 +19,8 @@
     "outDir": "dist",
     "types": []
   },
-  "include": ["src/**/*.ts", "tests/**/*.ts"]
+  "include": ["src/**/*.ts", "tests/**/*.ts"],
+  // tests/types has its own program (tests/types/tsconfig.json): its
+  // `declare module '@rocicorp/zero'` augmentation must not leak here.
+  "exclude": ["tests/types"]
 }
