@@ -83,12 +83,23 @@ export class ZeroInstanceManager {
 
     this.#started = true;
 
+    // Environment initializers run before component construction and outside
+    // any reactive context. Reconcile once synchronously so field initializers
+    // can use the Zero instance. Prime previous() at the initial source too.
+    const source = this.#source.current();
+    void this.#source.previous();
+    this.#reconcile(source, undefined);
+
     effect(
       () => {
         const source = this.#source.current();
         const previousSource = this.#source.previous();
 
         this.#rotationGeneration();
+
+        if (previousSource === undefined && !this.#rotationPending) {
+          return;
+        }
 
         untracked(() => this.#reconcile(source, previousSource));
       },

@@ -48,6 +48,42 @@ function setup(source: ZeroInstanceOptions, ...features: ZeroFeature[]): SetupRe
 afterEach(() => TestBed.resetTestingModule());
 
 describe('provideZero', () => {
+  it('constructs before the first tick', () => {
+    const harness = fakeZeroHarness();
+
+    TestBed.configureTestingModule({
+      providers: [
+        provideTestChangeDetection(),
+        { provide: ZERO_CONSTRUCTOR, useValue: harness.construct },
+        provideZero(options()),
+      ],
+    });
+
+    const manager = TestBed.inject(ZERO_INSTANCE);
+
+    expect(manager.zeroOrThrow()).toBe(harness.latest() as unknown as Zero);
+  });
+
+  it('does not recreate on the effect initial run', () => {
+    const harness = fakeZeroHarness();
+
+    TestBed.configureTestingModule({
+      providers: [
+        provideTestChangeDetection(),
+        { provide: ZERO_CONSTRUCTOR, useValue: harness.construct },
+        provideZero(options()),
+      ],
+    });
+
+    const manager = TestBed.inject(ZERO_INSTANCE);
+    const initial = manager.zeroOrThrow();
+
+    TestBed.tick();
+
+    expect(manager.zeroOrThrow()).toBe(initial);
+    expect(harness.created).toHaveLength(1);
+  });
+
   it('constructs from the reactive source', () => {
     const { harness, manager } = setup(options());
     expect(harness.created).toHaveLength(1);
