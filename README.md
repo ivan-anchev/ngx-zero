@@ -49,6 +49,21 @@ pnpm test
 pnpm build
 ```
 
+## Local playground
+
+The standalone app in [`examples/playground`](examples/playground) exercises the
+current public API against a real, in-memory Zero instance. It does not require a
+Zero Cache server.
+
+```sh
+pnpm playground
+```
+
+Open the URL printed by Vite. Use the UI to create, complete, and delete issues,
+or switch users to exercise reactive Zero instance rotation. The root package is
+built first, so the playground consumes `ngx-zero` through its package exports
+rather than importing library source files.
+
 ## License
 
 [MIT](LICENSE)

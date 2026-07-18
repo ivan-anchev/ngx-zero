@@ -1,0 +1,22 @@
+{
+  "name": "ngx-zero-playground",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit && vite build"
+  },
+  "dependencies": {
+    "@angular/compiler": "20.3.26",
+    "@angular/core": "20.3.26",
+    "@angular/platform-browser": "20.3.26",
+    "@rocicorp/zero": "1.8.0",
+    "ngx-zero": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "~5.9.2",
+    "vite": "^7.3.6"
+  }
+}

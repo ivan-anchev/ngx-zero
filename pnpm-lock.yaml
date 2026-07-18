@@ -57,6 +57,31 @@ importers:
         specifier: ^0.15.1
         version: 0.15.1
 
+  examples/playground:
+    dependencies:
+      '@angular/compiler':
+        specifier: 20.3.26
+        version: 20.3.26
+      '@angular/core':
+        specifier: 20.3.26
+        version: 20.3.26(@angular/compiler@20.3.26)(rxjs@7.8.2)(zone.js@0.15.1)
+      '@angular/platform-browser':
+        specifier: 20.3.26
+        version: 20.3.26(@angular/common@20.3.26(@angular/core@20.3.26(@angular/compiler@20.3.26)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2))(@angular/core@20.3.26(@angular/compiler@20.3.26)(rxjs@7.8.2)(zone.js@0.15.1))
+      '@rocicorp/zero':
+        specifier: 1.8.0
+        version: 1.8.0(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.1))
+      ngx-zero:
+        specifier: workspace:*
+        version: link:../..
+    devDependencies:
+      typescript:
+        specifier: ~5.9.2
+        version: 5.9.3
+      vite:
+        specifier: ^7.3.6
+        version: 7.3.6(@types/node@26.1.1)(yaml@2.9.0)
+
 packages:
 
   '@andrewbranch/untar.js@1.0.3':

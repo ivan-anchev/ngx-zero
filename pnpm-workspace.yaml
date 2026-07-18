@@ -1,3 +1,6 @@
+packages:
+  - 'examples/*'
+
 # Dependency build scripts are deliberately disabled: @rocicorp/zero-sqlite3 is
 # server-side only, esbuild/protobufjs work fine without their postinstall.
 allowBuilds:
