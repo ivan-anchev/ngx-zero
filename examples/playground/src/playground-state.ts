@@ -22,11 +22,8 @@ export async function login(userID: string, ttlSeconds = 3600): Promise<void> {
 
 let cachedContext: AuthContext = { userID: null };
 
-/**
- * The provideZero factory reruns on every session change; a fresh context
- * object would recreate the instance even for a pure token rotation, so the
- * reference is kept stable per user.
- */
+// Kept referentially stable per user: a fresh context object would recreate
+// the instance on every token rotation.
 export function contextFor(userID: string): AuthContext {
   if (cachedContext.userID !== userID) {
     cachedContext = { userID };

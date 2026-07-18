@@ -10,7 +10,6 @@ services:
       POSTGRES_USER: user
       POSTGRES_PASSWORD: password
       POSTGRES_DB: playground
-    # Zero replicates from Postgres via logical replication.
     command: >-
       postgres
       -c wal_level=logical

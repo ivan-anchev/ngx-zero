@@ -16,10 +16,8 @@ const secret = new TextEncoder().encode(process.env['AUTH_SECRET']);
 const pool = new Pool({ connectionString: process.env['ZERO_UPSTREAM_DB'] });
 const dbProvider = zeroDrizzle(schema, drizzle(pool));
 
-/**
- * No Authorization header → anonymous. A header that fails verification
- * (expired, bad signature) → 401, which puts Zero into `needs-auth`.
- */
+// No Authorization header → anonymous; a header that fails verification → 401,
+// which puts Zero into `needs-auth`.
 async function authContext(c: Context): Promise<AuthContext> {
   const header = c.req.header('authorization');
   if (header === undefined || !header.startsWith('Bearer ')) {
@@ -35,8 +33,6 @@ async function authContext(c: Context): Promise<AuthContext> {
 
 const app = new Hono();
 
-// Fake login: mints a JWT for any user name. `ttl` (seconds) lets the
-// playground demo token expiry and the needs-auth flow.
 app.get('/api/login', async c => {
   const userID = c.req.query('user') ?? 'ada';
   const ttl = Number(c.req.query('ttl') ?? 3600);

@@ -20,8 +20,7 @@ export const mutators = defineMutators({
   issue: {
     create: defineMutator(createArgs, async ({ tx, args, ctx }) => {
       const userID = requireUser(ctx);
-      // Server-only rule: lets the playground demo an optimistic apply that
-      // the server rejects and rolls back.
+      // Server-only on purpose: demos an optimistic apply that gets rolled back.
       if (tx.location === 'server' && args.title.toLowerCase().includes('rollback')) {
         throw new Error('The server refuses titles containing "rollback".');
       }
