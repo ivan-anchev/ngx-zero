@@ -1,9 +1,12 @@
 packages:
   - 'examples/*'
 
-# esbuild/protobufjs work fine without their postinstall. zero-sqlite3 must
-# build: the playground runs zero-cache, which needs the native module.
+# zero-sqlite3 must build because the playground runs zero-cache. The other
+# native helpers are optional for the repository's build and runtime paths.
 allowBuilds:
+  '@parcel/watcher': false
   '@rocicorp/zero-sqlite3': true
   esbuild: false
+  lmdb: false
+  msgpackr-extract: false
   protobufjs: false

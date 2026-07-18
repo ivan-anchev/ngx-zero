@@ -1,0 +1,91 @@
+.board {
+  margin-top: 24px;
+  border: 1px solid #d8ded6;
+  border-radius: 8px;
+  padding: 16px;
+  background: #fff;
+}
+
+.board-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+h2 {
+  margin: 0;
+  font-size: 1.5rem;
+}
+
+.count {
+  font-size: 0.8rem;
+  color: #66716b;
+}
+
+.notice {
+  margin: 12px 0 0;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 0.85rem;
+  color: #315f3e;
+  background: #e6f4e8;
+}
+
+.notice.error {
+  color: #8a302d;
+  background: #fae8e5;
+}
+
+.issue-list {
+  display: grid;
+  gap: 8px;
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.issue-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border: 1px solid #e2e7e0;
+  border-radius: 6px;
+  padding: 10px 12px;
+  background: #fff;
+}
+
+.issue-list label {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.issue-list label span {
+  display: grid;
+  gap: 2px;
+}
+
+.issue-list small {
+  color: #7a847e;
+}
+
+.issue-list li.completed strong {
+  color: #879089;
+  text-decoration: line-through;
+}
+
+.issue-list li.empty {
+  justify-content: center;
+  padding: 32px;
+  color: #68736d;
+}
+
+.danger {
+  border-color: #ecd6d2;
+  background: #faefed;
+  color: #9b4b45;
+}

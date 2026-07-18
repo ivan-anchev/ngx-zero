@@ -1,0 +1,37 @@
+<section class="board">
+  <div class="board-heading">
+    <h2>{{ mineOnly() ? 'My issues' : 'All issues' }}</h2>
+    <span class="count">{{ openCount() }} open · {{ issues().length }} total</span>
+  </div>
+
+  @if (lastError()) {
+    <p class="notice error">{{ lastError() }}</p>
+  } @else if (lastAction()) {
+    <p class="notice">{{ lastAction() }}</p>
+  }
+
+  <ul class="issue-list">
+    @for (issue of issues(); track issue.id) {
+      <li [class.completed]="issue.completed">
+        <label>
+          <input
+            type="checkbox"
+            [checked]="issue.completed"
+            (change)="toggle(issue)"
+          />
+          <span>
+            <strong>{{ issue.title }}</strong>
+            <small>owned by {{ issue.ownerId }}</small>
+          </span>
+        </label>
+        <button class="danger" type="button" (click)="issueRemoved.emit(issue)">
+          Delete
+        </button>
+      </li>
+    } @empty {
+      <li class="empty">
+        <span>No issues synced yet — add one above.</span>
+      </li>
+    }
+  </ul>
+</section>

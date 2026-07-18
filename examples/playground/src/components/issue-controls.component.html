@@ -1,0 +1,27 @@
+<section class="toolbar">
+  <div>
+    <label for="new-issue">Add an issue</label>
+    <div class="input-row">
+      <input
+        id="new-issue"
+        placeholder="e.g. Wire up injectQuery"
+        (keydown.enter)="submitTitle(titleInput)"
+        #titleInput
+      />
+      <button class="primary" type="button" (click)="submitTitle(titleInput)">
+        Add
+      </button>
+    </div>
+  </div>
+  <div class="user-switcher">
+    <span>Session</span>
+    <button type="button" (click)="userSwitched.emit()">
+      Switch to {{ otherUser() }}
+    </button>
+    <button type="button" (click)="authRotated.emit()">Rotate auth</button>
+    <button type="button" (click)="shortTokenRequested.emit()">15s token</button>
+    <button type="button" (click)="filterToggled.emit()">
+      {{ mineOnly() ? 'Show all issues' : 'Show only mine' }}
+    </button>
+  </div>
+</section>

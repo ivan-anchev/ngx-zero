@@ -1,0 +1,44 @@
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-top: 24px;
+  border: 1px solid #d8ded6;
+  border-radius: 8px;
+  padding: 16px;
+  background: #fff;
+}
+
+label,
+.user-switcher > span {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #66716b;
+}
+
+.input-row {
+  display: flex;
+  gap: 8px;
+}
+
+.user-switcher button {
+  margin: 0 6px 4px 0;
+}
+
+input {
+  min-width: 280px;
+  border: 1px solid #c6cec5;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font: inherit;
+}
+
+.primary {
+  border-color: #1c2321;
+  background: #1c2321;
+  color: #fff;
+}

@@ -16,7 +16,6 @@
     "db:setup": "pnpm db:up && pnpm db:push && pnpm db:seed"
   },
   "dependencies": {
-    "@angular/compiler": "20.3.26",
     "@angular/core": "20.3.26",
     "@angular/platform-browser": "20.3.26",
     "@rocicorp/zero": "1.8.0",
@@ -29,6 +28,9 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@analogjs/vite-plugin-angular": "2.6.3",
+    "@angular/build": "20.3.26",
+    "@angular/compiler": "20.3.26",
     "@hono/vite-dev-server": "^0.26.1",
     "@types/pg": "^8.20.0",
     "concurrently": "^10.0.3",

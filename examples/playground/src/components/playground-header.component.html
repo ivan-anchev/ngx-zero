@@ -1,0 +1,25 @@
+<header class="hero">
+  <div>
+    <p class="eyebrow">ngx-zero playground</p>
+    <h1>Issues</h1>
+    <p class="lede">
+      A real Zero backend: Postgres → zero-cache → this app. Mutations are
+      optimistic locally and authoritative on the server — try a title containing
+      “rollback” to watch the server reject it.
+    </p>
+  </div>
+  <aside class="runtime">
+    <div>
+      <span>Signed in as</span>
+      <strong class="status"><i></i>{{ userID() }}</strong>
+    </div>
+    <div>
+      <span>Zero instances created</span>
+      <strong>{{ instanceCreations() }}</strong>
+    </div>
+    <div>
+      <span>Query state</span>
+      <strong>{{ queryState() }}</strong>
+    </div>
+  </aside>
+</header>
