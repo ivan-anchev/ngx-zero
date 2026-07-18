@@ -60,6 +60,22 @@ const DisableableQueryHost = Component({ template: '' })(
   },
 );
 
+const UnrelatedSignalHost = Component({ template: '' })(
+  class {
+    readonly pulse = signal(0);
+    readonly issues = injectQuery(() => {
+      this.pulse();
+      return builder.issue.orderBy('id', 'asc');
+    });
+  },
+);
+
+const OneMissHost = Component({ template: '' })(
+  class {
+    readonly issue = injectQuery(() => builder.issue.where('id', 'missing').one());
+  },
+);
+
 afterEach(() => {
   TestBed.resetTestingModule();
   vi.restoreAllMocks();
@@ -138,6 +154,44 @@ describe('injectQuery', () => {
     expect(fixture.componentInstance.issues.data()).toMatchObject([
       { id: 'i1', title: 'first' },
     ]);
+  });
+
+  it('does not re-materialize when an unrelated signal reruns a key-equivalent thunk', async () => {
+    setup();
+    await createIssue('i1', 'first');
+    const zero = TestBed.inject(ZERO_INSTANCE).zeroOrThrow();
+    const materialize = vi.spyOn(zero, 'materialize');
+    const fixture = TestBed.createComponent(UnrelatedSignalHost);
+    fixture.autoDetectChanges();
+    await fixture.whenStable();
+
+    expect(materialize).toHaveBeenCalledTimes(1);
+
+    fixture.componentInstance.pulse.set(1);
+    await fixture.whenStable();
+
+    expect(materialize).toHaveBeenCalledTimes(1);
+    expect(fixture.componentInstance.issues.data()).toMatchObject([{ id: 'i1' }]);
+  });
+
+  it('distinguishes a one() miss from a disabled query by status', async () => {
+    setup();
+    await createIssue('i1', 'first');
+    const missFixture = TestBed.createComponent(OneMissHost);
+    missFixture.autoDetectChanges();
+    await missFixture.whenStable();
+
+    // Local-only Zero never receives the server's got-confirmation, so a miss
+    // reports 'unknown'; the 'complete' miss is pinned in the controller spec.
+    expect(missFixture.componentInstance.issue.data()).toBeUndefined();
+    expect(missFixture.componentInstance.issue.status()).toBe('unknown');
+
+    const disabledFixture = TestBed.createComponent(DisableableQueryHost);
+    disabledFixture.autoDetectChanges();
+    await disabledFixture.whenStable();
+
+    expect(disabledFixture.componentInstance.issues.data()).toBeUndefined();
+    expect(disabledFixture.componentInstance.issues.status()).toBe('disabled');
   });
 
   it('throws at inject time when provideZero is missing, naming the fix', () => {
