@@ -57,6 +57,15 @@ const orphanMutators = defineMutators({
   },
 });
 
+const TemplateHost = Component({
+  template:
+    '{{ createIssue.pending() ? "pending" : "idle" }}:{{ createIssue.error()?.message ?? "none" }}',
+})(
+  class {
+    readonly createIssue = injectMutator(mutators.issue.create);
+  },
+);
+
 const MutatorHost = Component({ template: '' })(
   class {
     readonly createIssue = injectMutator(mutators.issue.create);
@@ -419,6 +428,27 @@ describe('injectMutator', () => {
     });
     expect(ref.clientPending()).toBe(true);
     expect(ref.clientResult()).toBeUndefined();
+  });
+
+  it('re-renders a host template from mutation lifecycle signal writes', async () => {
+    const controlled = controlledZero(1);
+    TestBed.configureTestingModule({
+      providers: [provideTestChangeDetection(), provideZero({ zero: controlled.zero })],
+    });
+    const fixture = TestBed.createComponent(TemplateHost);
+    fixture.autoDetectChanges();
+    await fixture.whenStable();
+    const text = (): string | null =>
+      (fixture.nativeElement as HTMLElement).textContent;
+    expect(text()).toBe('idle:none');
+
+    fixture.componentInstance.createIssue.mutate({ id: 'i1', title: 'render' });
+    await fixture.whenStable();
+    expect(text()).toBe('pending:none');
+
+    controlled.calls[0].client.resolve({ type: 'success' });
+    controlled.calls[0].server.resolve(serverRejection);
+    await vi.waitFor(() => expect(text()).toBe('idle:server said no'));
   });
 
   it('never leaks unhandled rejections from ignored mutate() results', async () => {
