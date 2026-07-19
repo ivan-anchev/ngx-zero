@@ -43,10 +43,17 @@ readonly close  = injectMutation(mutators.issue.close);
 - Thunk runs in a **reactive context** (TanStack-adapter style): signals read inside
   retrack. One computed tracks both the current Zero instance and the query identity,
   coalescing their changes into one reconciliation.
-- Identity is semantic rather than object identity. A registry `QueryRequest` uses its
-  `queryName` plus recursively key-sorted JSON args. A raw query uses its AST hash plus
-  serialized result format, because `.one()` and `.limit(1)` can share an AST hash while
-  returning different shapes. A new object with an unchanged key never destroys the view.
+- Identity is semantic rather than object identity, and Zero defines it. The thunk
+  result (raw query or registry `QueryRequest`) is resolved against the instance's
+  current context via `addContextToQuery` — exactly what `zero.materialize` does
+  internally — so validators, context, and AST semantics all participate. The key is
+  the resolved query's canonical client hash (its AST hash, the same identity Zero's
+  React binding uses) plus its serialized result format, because `.one()` and
+  `.limit(1)` can share an AST hash while returning different shapes. A registry
+  request therefore keys equal to a semantically identical raw query, and args key
+  order never matters. Resolution runs per thunk re-run — the same per-render cost
+  Zero's React binding pays. A new object with an unchanged key never destroys the
+  view; the resolved query itself is what gets materialized.
 - Thunk may return `Falsy` to disable → typed overload where `data: Signal<T | undefined>`,
   status can be `'disabled'`. Disabling destroys the live view and resets data to
   `undefined`, status to `'disabled'`, and error to `undefined`; re-enabling materializes
