@@ -30,9 +30,8 @@ export function injectMutator<
   options?: InjectMutatorOptions,
 ): MutatorRef<TInput>;
 
-// The public overload above owns all typing; upstream keeps its loose
-// `AnyMutator` alias private, so the implementation takes the leaf as
-// `unknown` and casts it once at the zero.mutate boundary.
+// Upstream's AnyMutator alias is private — take the leaf as `unknown`,
+// cast once at the zero.mutate boundary.
 export function injectMutator(
   mutator: unknown,
   options: InjectMutatorOptions = {},
@@ -54,25 +53,19 @@ export function injectMutator(
   injector.get(DestroyRef).onDestroy(() => tracker.destroy());
 
   const mutate = (args?: ReadonlyJSONValue): MutatorResult => {
-    // Resolve the CURRENT instance at each call (it is replaceable).
-    // `untracked` so a mutate() inside an effect never subscribes it to
+    // untracked: a mutate() inside an effect must not subscribe it to
     // instance changes.
     const zero = untracked(() => manager.zeroOrThrow());
 
-    // Calling the leaf only builds the request zero.mutate executes.
     const buildRequest = mutator as (
       args?: ReadonlyJSONValue,
     ) => Parameters<typeof zero.mutate>[0];
 
-    // zero.mutate throws synchronously for an unregistered mutator; begin()
-    // comes after so a setup error never masquerades as a pending call.
+    // begin() after zero.mutate: its sync throw (unregistered mutator) must
+    // not leave a fake pending call.
     const raw = zero.mutate(buildRequest(args));
     const callId = tracker.begin();
 
-    // Never-reject boundary. The signals ride the SAME normalized promises
-    // the caller receives, so the awaited view and the signal view can never
-    // disagree; catch(noop) keeps a hypothetical tracker throw from becoming
-    // an unhandled rejection.
     const client = settleSafe(raw.client);
     const server = settleSafe(raw.server);
     client.then(details => tracker.settleClient(callId, details)).catch(noop);
@@ -91,8 +84,7 @@ export function injectMutator(
   };
 }
 
-/** Pass resolved details through; map any rejection into Zero's own
- *  zero-error details shape (one vocabulary regardless of failing layer). */
+/** Never-reject boundary: rejections become Zero's own error details shape. */
 function settleSafe(
   promise: Promise<MutatorResultDetails>,
 ): Promise<MutatorResultDetails> {
