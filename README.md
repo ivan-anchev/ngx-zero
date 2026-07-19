@@ -17,7 +17,7 @@ provideZero(() => ({
 // component — one inject per use-site, fully inferred
 export class IssuesList {
   readonly issues = injectQuery(() => queries.issues.open({ assignee: this.userId() }));
-  readonly close = injectMutation(mutators.issue.close);
+  readonly close = injectMutator(mutators.issue.close);
 }
 ```
 
@@ -31,7 +31,7 @@ export class IssuesList {
 
 ## Why
 
-- **Single inject.** `injectZero`, `injectQuery`, `injectMutation` — never
+- **Single inject.** `injectZero`, `injectQuery`, `injectMutator` — never
   "inject the instance, then pass it somewhere".
 - **Signals end-to-end.** Zoneless-first, zone.js fully supported (no `NgZone.run`
   anywhere).
