@@ -1,4 +1,4 @@
-import { Component, ErrorHandler, Injector } from '@angular/core';
+import { Component, ErrorHandler, Injector, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import {
   createBuilder,
@@ -350,6 +350,75 @@ describe('injectMutator', () => {
     expect(ref.clientPending()).toBe(false);
     expect(ref.clientResult()).toEqual({ type: 'success' });
     expect(ref.pending()).toBe(true);
+  });
+
+  it('routes each call to the current instance across rotation while in-flight settles land', async () => {
+    const first = controlledZero(1);
+    const second = controlledZero(1);
+    const current = signal(first.zero);
+    TestBed.configureTestingModule({
+      providers: [
+        provideTestChangeDetection(),
+        provideZero(() => ({ zero: current() })),
+      ],
+    });
+    const fixture = TestBed.createComponent(MutatorHost);
+    fixture.autoDetectChanges();
+    await fixture.whenStable();
+    const ref = fixture.componentInstance.createIssue;
+
+    const inFlight = ref.mutate({ id: 'i1', title: 'on first' });
+    expect(first.requests).toHaveLength(1);
+
+    current.set(second.zero);
+    await fixture.whenStable();
+
+    first.calls[0].client.resolve({ type: 'success' });
+    await expect(inFlight.client).resolves.toEqual({ type: 'success' });
+    expect(ref.clientResult()).toEqual({ type: 'success' });
+
+    const next = ref.mutate({ id: 'i2', title: 'on second' });
+    expect(second.requests).toHaveLength(1);
+    expect(first.requests).toHaveLength(1);
+    expect(ref.clientPending()).toBe(true);
+    expect(ref.clientResult()).toBeUndefined();
+
+    second.calls[0].client.resolve({ type: 'success' });
+    await expect(next.client).resolves.toEqual({ type: 'success' });
+    expect(ref.clientResult()).toEqual({ type: 'success' });
+  });
+
+  it('freezes signals after host destroy while awaited results still resolve', async () => {
+    const controlled = controlledZero(2);
+    TestBed.configureTestingModule({
+      providers: [provideTestChangeDetection(), provideZero({ zero: controlled.zero })],
+    });
+    const fixture = TestBed.createComponent(MutatorHost);
+    const ref = fixture.componentInstance.createIssue;
+
+    const result = ref.mutate({ id: 'i1', title: 'in flight' });
+    fixture.destroy();
+
+    controlled.calls[0].client.resolve({ type: 'success' });
+    controlled.calls[0].server.resolve(serverRejection);
+    await expect(result.client).resolves.toEqual({ type: 'success' });
+    await expect(result.server).resolves.toEqual(serverRejection);
+
+    expect(ref.clientPending()).toBe(true);
+    expect(ref.pending()).toBe(true);
+    expect(ref.clientResult()).toBeUndefined();
+    expect(ref.serverResult()).toBeUndefined();
+    expect(ref.error()).toBeUndefined();
+
+    const late = ref.mutate({ id: 'i2', title: 'after destroy' });
+    expect(controlled.requests).toHaveLength(2);
+    controlled.calls[1].client.reject(new Error('late failure'));
+    await expect(late.client).resolves.toEqual({
+      type: 'error',
+      error: { type: 'zero', message: 'late failure' },
+    });
+    expect(ref.clientPending()).toBe(true);
+    expect(ref.clientResult()).toBeUndefined();
   });
 
   it('never leaks unhandled rejections from ignored mutate() results', async () => {
