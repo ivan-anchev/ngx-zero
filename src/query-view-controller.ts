@@ -1,4 +1,4 @@
-import { signal, untracked, type Signal } from '@angular/core';
+import { signal, untracked } from '@angular/core';
 import type {
   AnyQuery,
   ErroredQuery,
@@ -9,6 +9,7 @@ import type {
 } from '@rocicorp/zero';
 import type { QueryKey } from './query-identity.js';
 import type { QueryStatus } from './query-ref.js';
+import { tryCatch } from './utils.js';
 
 export const DISABLED: unique symbol = Symbol('ngx-zero/disabled');
 
@@ -51,24 +52,16 @@ export class QueryViewController {
   readonly #keepPreviousData: boolean;
   readonly #ttl: TTL | undefined;
 
+  readonly data = this.#data.asReadonly();
+  readonly status = this.#status.asReadonly();
+  readonly error = this.#error.asReadonly();
+
   constructor(options: {
     keepPreviousData: boolean;
     ttl: TTL | undefined;
   }) {
     this.#keepPreviousData = options.keepPreviousData;
     this.#ttl = options.ttl;
-  }
-
-  get data(): Signal<unknown> {
-    return this.#data.asReadonly();
-  }
-
-  get status(): Signal<QueryStatus> {
-    return this.#status.asReadonly();
-  }
-
-  get error(): Signal<ErroredQuery | undefined> {
-    return this.#error.asReadonly();
   }
 
   /**
@@ -114,15 +107,15 @@ export class QueryViewController {
     // All failure-prone work happens here, before the swap below.
     const candidate = this.#buildCandidate(spec);
 
-    // Atomic swap. The finally installs the candidate even if retiring the
-    // old session throws (unsubscribe failure): the applied spec and the
-    // installed session must never diverge.
+    // Atomic swap. The candidate installs even if retiring the old session
+    // throws (unsubscribe failure): the applied spec and the installed
+    // session must never diverge. The retirement error surfaces after.
     this.#applied = spec;
-    try {
-      this.#teardown();
-    } finally {
-      this.#session = candidate.session;
-      candidate.install(bridgeAllowed);
+    const retired = tryCatch(() => this.#teardown());
+    this.#session = candidate.session;
+    candidate.install(bridgeAllowed);
+    if (retired.error) {
+      throw retired.error;
     }
   }
 
@@ -139,10 +132,10 @@ export class QueryViewController {
 
     this.#session = undefined;
     session.alive = false; // stale-write guard first, then detach
-    try {
-      session.unsubscribe();
-    } finally {
-      session.view.destroy(); // release the IVM view even if unsubscribe threw
+    const unsubscribed = tryCatch(() => session.unsubscribe());
+    session.view.destroy(); // release the IVM view even if unsubscribe threw
+    if (unsubscribed.error) {
+      throw unsubscribed.error;
     }
   }
 
@@ -185,15 +178,15 @@ export class QueryViewController {
       this.#write(data, resultType, error);
     };
 
-    try {
-      session.unsubscribe = view.addListener(listener);
-    } catch (cause) {
+    const subscribed = tryCatch(() => view.addListener(listener));
+    if (subscribed.error) {
       // Failed candidates leave nothing behind: release the view and let the
       // error propagate with the prior session untouched.
       session.alive = false;
       view.destroy();
-      throw cause;
+      throw subscribed.error;
     }
+    session.unsubscribe = subscribed.result;
 
     const install = (bridgeAllowed: boolean): void => {
       installed = true;
