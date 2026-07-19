@@ -144,24 +144,25 @@ describe('QueryViewController', () => {
     expect(query.status()).toBe('complete');
   });
 
-  it('releases the view and keeps stale writes dead when unsubscribe throws', () => {
+  it('completes the swap when the old session unsubscribe throws', () => {
     const first = new FakeTypedView([{ id: 'old' }], 'complete');
     first.throwOnUnsubscribe = true;
     const second = new FakeTypedView([{ id: 'fresh' }], 'complete');
-    const zero = new MaterializeHarness([second]);
-    const seedZero = new MaterializeHarness([first]);
+    const zero = new MaterializeHarness([first, second]);
     const query = controller();
 
-    query.reconcile(spec(seedZero, 'old'));
+    query.reconcile(spec(zero, 'old'));
     expect(() => query.reconcile(spec(zero, 'new'))).toThrow(/unsubscribe boom/);
 
+    // The old view is still released and its writes stay dead...
     expect(first.destroyed).toBe(true);
     first.emit([{ id: 'stale' }], 'complete');
-    expect(query.data()).toEqual([{ id: 'old' }]);
-
-    const recovery = spec(zero, 'new');
-    query.retry(() => recovery);
+    // ...while the already-built candidate is installed: no retry needed.
     expect(query.data()).toEqual([{ id: 'fresh' }]);
+    expect(query.status()).toBe('complete');
+
+    second.emit([{ id: 'later' }], 'complete');
+    expect(query.data()).toEqual([{ id: 'later' }]);
   });
 
   it('destroys every intermediate view under rapid key flapping and keeps the last key', () => {
@@ -389,7 +390,7 @@ describe('QueryViewController', () => {
     expect(query.status()).toBe('unknown');
   });
 
-  it('keeps prior signals on materialization failure and recovers via retry', () => {
+  it('keeps the prior session fully live on materialization failure', () => {
     const first = new FakeTypedView([{ id: 'old' }], 'complete');
     const second = new FakeTypedView([{ id: 'fresh' }], 'complete');
     const zero = new MaterializeHarness([first, second]);
@@ -401,17 +402,20 @@ describe('QueryViewController', () => {
     zero.failNext = true;
     expect(() => query.reconcile(next)).toThrow(/materialize boom/);
 
-    expect(first.destroyed).toBe(true);
-    expect(query.data()).toEqual([{ id: 'old' }]);
+    // Genuinely live: not torn down, still emitting into the signals.
+    expect(first.unsubscribed).toBe(false);
+    expect(first.destroyed).toBe(false);
+    first.emit([{ id: 'still-live' }], 'complete');
+    expect(query.data()).toEqual([{ id: 'still-live' }]);
     expect(query.status()).toBe('complete');
 
     query.updateTTL(42);
-    expect(first.ttlUpdates).toEqual([]);
+    expect(first.ttlUpdates).toEqual([42]);
 
+    // The failed spec never applied, so an ordinary reconcile retries it.
     query.reconcile(next);
-    expect(zero.queries).toHaveLength(1);
-
-    query.retry(() => next);
+    expect(zero.queries).toHaveLength(2);
+    expect(first.destroyed).toBe(true);
     expect(query.data()).toEqual([{ id: 'fresh' }]);
     expect(query.status()).toBe('complete');
   });

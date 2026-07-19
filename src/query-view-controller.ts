@@ -75,8 +75,12 @@ export class QueryViewController {
    * Called eagerly at injectQuery() time, from the tracking effect on every
    * identity change, and from retry() with force. A throwing thunk throws in
    * the spec computed before this runs, so a live view is never torn down
-   * for an error. If materialize throws here, no session is installed, the
-   * signals keep their previous values, and retry() is the recovery path.
+   * for an error. The candidate session is built (materialize + subscribe)
+   * BEFORE any live state is touched: if either throws, `#applied` does not
+   * advance and the prior session stays fully live — still subscribed, still
+   * updating the signals — so the next identity change or retry() reconciles
+   * normally. Two live views on the same query may briefly coexist during the
+   * build; Zero dedupes the IVM pipeline by query hash.
    */
   reconcile(spec: QuerySpec, options: { force?: boolean } = {}): void {
     if (this.#destroyed) {
@@ -87,12 +91,10 @@ export class QueryViewController {
       return;
     }
 
-    const previous = this.#applied;
-    this.#applied = spec;
-
-    this.#teardown();
-
     if (spec.key === DISABLED) {
+      // Nothing failure-prone here: retire first, then reset the signals.
+      this.#applied = spec;
+      this.#teardown();
       this.#data.set(undefined);
       this.#status.set('disabled');
       this.#error.set(undefined);
@@ -101,6 +103,7 @@ export class QueryViewController {
 
     // Bridge only a same-instance enabled->enabled key change, never a
     // forced retry and never an instance swap (no old-user data flash).
+    const previous = this.#applied;
     const bridgeAllowed =
       this.#keepPreviousData &&
       !options.force &&
@@ -108,12 +111,24 @@ export class QueryViewController {
       previous.key !== DISABLED &&
       previous.zero === spec.zero;
 
-    this.#materialize(spec, bridgeAllowed);
+    // All failure-prone work happens here, before the swap below.
+    const candidate = this.#buildCandidate(spec);
+
+    // Atomic swap. The finally installs the candidate even if retiring the
+    // old session throws (unsubscribe failure): the applied spec and the
+    // installed session must never diverge.
+    this.#applied = spec;
+    try {
+      this.#teardown();
+    } finally {
+      this.#session = candidate.session;
+      candidate.install(bridgeAllowed);
+    }
   }
 
   /**
-   * Never touches the public signals: enabled->enabled is overwritten by the
-   * new session's synchronous first emission in the same reconcile step, and
+   * Never touches the public signals: enabled->enabled applies the candidate's
+   * captured snapshot right after this in the same reconcile step, and
    * enabled->disabled resets explicitly in reconcile().
    */
   #teardown(): void {
@@ -131,7 +146,17 @@ export class QueryViewController {
     }
   }
 
-  #materialize(spec: EnabledQuerySpec, bridgeAllowed: boolean): void {
+  /**
+   * Materializes and subscribes a candidate session without touching any live
+   * state. addListener fires synchronously with the current (data, resultType,
+   * error) — verified in zero@1.8.0 — but the old session is still live here,
+   * so that emission is captured instead of written; `install()` applies it
+   * during the atomic swap. After install, emissions write directly.
+   */
+  #buildCandidate(spec: EnabledQuerySpec): {
+    session: ViewSession;
+    install: (bridgeAllowed: boolean) => void;
+  } {
     // spec.query is already context-resolved, so Zero's public materialize
     // signature accepts it as-is; the annotation pins the erased row type.
     const view: TypedView<unknown> = spec.zero.materialize(
@@ -140,7 +165,10 @@ export class QueryViewController {
     );
 
     const session: ViewSession = { alive: true, view, unsubscribe: noop };
-    let isInitialEmission = true;
+    let installed = false;
+    let captured:
+      | { data: unknown; resultType: ResultType; error?: ErroredQuery }
+      | undefined;
 
     const listener = (
       data: unknown,
@@ -150,34 +178,49 @@ export class QueryViewController {
       if (!session.alive) {
         return;
       }
-
-      if (isInitialEmission) {
-        isInitialEmission = false;
-        // The bridge is skipping this initial overwrite: only when the new
-        // view would otherwise flash empty at 'unknown'. Data keeps the
-        // previous key's rows; status honestly belongs to the new view.
-        if (
-          bridgeAllowed &&
-          resultType === 'unknown' &&
-          isEmptyResult(data)
-        ) {
-          this.#status.set('unknown');
-          this.#error.set(undefined);
-          return;
-        }
+      if (!installed) {
+        captured = { data, resultType, error };
+        return;
       }
-
-      // Single write path: observers only ever see a consistent triple.
-      this.#data.set(data);
-      this.#status.set(resultType);
-      this.#error.set(resultType === 'error' ? error : undefined);
+      this.#write(data, resultType, error);
     };
 
-    // addListener fires synchronously with the current (data, resultType,
-    // error) — verified in zero@1.8.0 — so the initial emission seeds all
-    // three signals before materialize() returns.
-    session.unsubscribe = view.addListener(listener);
-    this.#session = session;
+    try {
+      session.unsubscribe = view.addListener(listener);
+    } catch (cause) {
+      // Failed candidates leave nothing behind: release the view and let the
+      // error propagate with the prior session untouched.
+      session.alive = false;
+      view.destroy();
+      throw cause;
+    }
+
+    const install = (bridgeAllowed: boolean): void => {
+      installed = true;
+      if (!captured) {
+        return;
+      }
+      const { data, resultType, error } = captured;
+      captured = undefined;
+      // The bridge is skipping this initial overwrite: only when the new
+      // view would otherwise flash empty at 'unknown'. Data keeps the
+      // previous key's rows; status honestly belongs to the new view.
+      if (bridgeAllowed && resultType === 'unknown' && isEmptyResult(data)) {
+        this.#status.set('unknown');
+        this.#error.set(undefined);
+        return;
+      }
+      this.#write(data, resultType, error);
+    };
+
+    return { session, install };
+  }
+
+  /** Single write path: observers only ever see a consistent triple. */
+  #write(data: unknown, resultType: ResultType, error?: ErroredQuery): void {
+    this.#data.set(data);
+    this.#status.set(resultType);
+    this.#error.set(resultType === 'error' ? error : undefined);
   }
 
   /** `untracked` so it is callable from templates and effects without deps. */
