@@ -46,6 +46,18 @@ describe('resolveQuery', () => {
     );
   });
 
+  it('keys independently of args object key order', () => {
+    // The key is derived from the resolved AST, which reads individual arg
+    // values -- the args object's key order never reaches the hash.
+    expect(key(queries.issue.byFilter({ id: 'i1', owner: 'o1' }))).toBe(
+      key(queries.issue.byFilter({ owner: 'o1', id: 'i1' })),
+    );
+  });
+
+  it('keys a registry request equal to its semantically identical raw query', () => {
+    expect(key(queries.issue.all())).toBe(key(builder.issue));
+  });
+
   it('includes the result format in the key', () => {
     expect(key(builder.issue.one())).not.toBe(key(builder.issue.limit(1)));
   });
