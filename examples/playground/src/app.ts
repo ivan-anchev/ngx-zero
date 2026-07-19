@@ -4,8 +4,8 @@ import {
   computed,
   signal,
 } from '@angular/core';
-import type { MutateRequest, ReadonlyJSONValue } from '@rocicorp/zero';
-import { injectQuery, injectZero } from 'ngx-zero';
+import type { MutatorResult } from '@rocicorp/zero';
+import { injectMutator, injectQuery } from 'ngx-zero';
 import {
   IssueBoardComponent,
   type IssueCompletionChange,
@@ -64,7 +64,9 @@ import type { Issue } from './zero/schema.gen';
   `,
 })
 export class App {
-  readonly zero = injectZero();
+  readonly createIssue = injectMutator(mutators.issue.create);
+  readonly setCompletedMutator = injectMutator(mutators.issue.setCompleted);
+  readonly removeIssueMutator = injectMutator(mutators.issue.remove);
   readonly session = session;
   readonly instanceCreations = instanceCreations;
 
@@ -85,7 +87,7 @@ export class App {
 
   addIssue(title: string): void {
     void this.runMutation(
-      mutators.issue.create({
+      this.createIssue.mutate({
         id: crypto.randomUUID(),
         title,
         createdAt: Date.now(),
@@ -96,14 +98,14 @@ export class App {
 
   setCompleted({ issue, completed }: IssueCompletionChange): void {
     void this.runMutation(
-      mutators.issue.setCompleted({ id: issue.id, completed }),
+      this.setCompletedMutator.mutate({ id: issue.id, completed }),
       completed ? `Completed “${issue.title}”` : `Reopened “${issue.title}”`,
     );
   }
 
   removeIssue(issue: Issue): void {
     void this.runMutation(
-      mutators.issue.remove({ id: issue.id }),
+      this.removeIssueMutator.mutate({ id: issue.id }),
       `Deleted “${issue.title}”`,
     );
   }
@@ -159,13 +161,12 @@ export class App {
     }
   }
 
-  private async runMutation<TInput extends ReadonlyJSONValue | undefined>(
-    request: MutateRequest<TInput>,
+  private async runMutation(
+    result: MutatorResult,
     successMessage: string,
   ): Promise<void> {
     this.lastError.set('');
 
-    const result = this.zero().mutate(request);
     const client = await result.client;
     if (client.type === 'error') {
       this.lastError.set(`Optimistic apply failed: ${client.error.message}`);
