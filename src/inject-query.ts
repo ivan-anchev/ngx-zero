@@ -1,0 +1,141 @@
+import {
+  assertInInjectionContext,
+  computed,
+  DestroyRef,
+  effect,
+  inject,
+  Injector,
+  untracked,
+} from '@angular/core';
+import type {
+  BaseDefaultContext,
+  BaseDefaultSchema,
+  DefaultContext,
+  DefaultSchema,
+  Falsy,
+  HumanReadable,
+  PullRow,
+  QueryOrQueryRequest,
+  ReadonlyJSONValue,
+} from '@rocicorp/zero';
+import { ngxZeroError } from './errors.js';
+import { ZERO_INSTANCE } from './instance-manager.js';
+import {
+  resolveQuery,
+  type AnyQueryOrRequest,
+} from './query-identity.js';
+import type {
+  InjectQueryOptions,
+  QueryRef,
+  QueryStatus,
+} from './query-ref.js';
+import {
+  DISABLED,
+  QueryViewController,
+  type QuerySpec,
+} from './query-view-controller.js';
+
+// Overloads mirror Zero's useQuery generics; order matters — a never-falsy
+// thunk must resolve to the tighter signature.
+
+/** Always-enabled: tight data type, status can never be 'disabled'. */
+export function injectQuery<
+  TTable extends keyof TSchema['tables'] & string,
+  TInput extends ReadonlyJSONValue | undefined,
+  TOutput extends ReadonlyJSONValue | undefined,
+  TSchema extends BaseDefaultSchema = DefaultSchema,
+  TReturn = PullRow<TTable, TSchema>,
+  TContext extends BaseDefaultContext = DefaultContext,
+>(
+  queryThunk: () => QueryOrQueryRequest<
+    TTable,
+    TInput,
+    TOutput,
+    TSchema,
+    TReturn,
+    TContext
+  >,
+  options?: InjectQueryOptions,
+): QueryRef<HumanReadable<TReturn>>;
+
+/** Disableable: data widens with `| undefined`, status with 'disabled'. */
+export function injectQuery<
+  TTable extends keyof TSchema['tables'] & string,
+  TInput extends ReadonlyJSONValue | undefined,
+  TOutput extends ReadonlyJSONValue | undefined,
+  TSchema extends BaseDefaultSchema = DefaultSchema,
+  TReturn = PullRow<TTable, TSchema>,
+  TContext extends BaseDefaultContext = DefaultContext,
+>(
+  queryThunk: () =>
+    | QueryOrQueryRequest<
+        TTable,
+        TInput,
+        TOutput,
+        TSchema,
+        TReturn,
+        TContext
+      >
+    | Falsy,
+  options?: InjectQueryOptions,
+): QueryRef<HumanReadable<TReturn> | undefined, QueryStatus>;
+
+export function injectQuery(
+  queryThunk: () => AnyQueryOrRequest | Falsy,
+  options: InjectQueryOptions = {},
+): QueryRef<unknown, QueryStatus> {
+  if (options.injector === undefined) {
+    assertInInjectionContext(injectQuery);
+  }
+  const injector = options.injector ?? inject(Injector);
+
+  const manager = injector.get(ZERO_INSTANCE, null, { optional: true });
+  if (!manager) {
+    throw ngxZeroError(
+      'injectQuery() could not find a Zero instance manager. ' +
+        'Add provideZero(...) to your ApplicationConfig providers.',
+    );
+  }
+
+  // One computed for both change sources (instance + thunk signals);
+  // key-equal reruns keep the old reference via `equal`.
+  const spec = computed<QuerySpec>(
+    () => {
+      const zero = manager.zeroOrThrow();
+      const result = queryThunk();
+      if (!result) {
+        return { zero, key: DISABLED, query: undefined };
+      }
+      return { zero, ...resolveQuery(zero, result) };
+    },
+    { equal: (a, b) => a.zero === b.zero && a.key === b.key },
+  );
+
+  const controller = new QueryViewController({
+    keepPreviousData: options.keepPreviousData ?? false,
+    ttl: options.ttl,
+  });
+
+  injector.get(DestroyRef).onDestroy(() => controller.destroy());
+
+  // Eager: the first change-detection pass renders real rows; the effect's
+  // first flush re-reads the same cached spec and is a no-op.
+  untracked(() => controller.reconcile(spec()));
+
+  effect(
+    () => {
+      const current = spec();
+      untracked(() => controller.reconcile(current));
+    },
+    { injector },
+  );
+
+  return {
+    data: controller.data,
+    status: controller.status,
+    error: controller.error,
+    isComplete: computed(() => controller.status() === 'complete'),
+    retry: () => controller.retry(spec),
+    updateTTL: ttl => controller.updateTTL(ttl),
+  };
+}
