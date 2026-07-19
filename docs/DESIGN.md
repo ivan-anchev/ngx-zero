@@ -6,7 +6,7 @@ Decisions recorded 2026-07-15 against `@rocicorp/zero@1.8.0` and Angular v22 (fl
 ## Principles
 
 1. **Single inject per use-site.** A component touches exactly one of `injectZero`,
-   `injectQuery`, `injectMutation`. Never "inject the instance, then pass it to a
+   `injectQuery`, `injectMutator`. Never "inject the instance, then pass it to a
    second inject". Zero ≥1.x makes this natural: queries (`createBuilder`/`defineQueries`)
    and mutators (`defineMutators`) are built without the instance; the instance is only
    needed at materialize/mutate time, and the library resolves it from DI internally.
@@ -35,7 +35,7 @@ provideZero(() => ({
 
 // component
 readonly issues = injectQuery(() => queries.issues.open({ assignee: this.userId() }));
-readonly close  = injectMutation(mutators.issue.close);
+readonly close  = injectMutator(mutators.issue.close);
 ```
 
 ### `injectQuery(queryThunk, options?): QueryRef<T>` — implemented
@@ -93,18 +93,53 @@ readonly close  = injectMutation(mutators.issue.close);
   while the prior session remains fully live — still subscribed, still updating the
   signals — and the next identity change or `retry()` reconciles normally.
 
-### `injectMutation(mutator, options?): MutationRef`
+### `injectMutator(mutator, options?): MutatorRef<TInput>` — implemented
 
-- Stateful ref over one registry mutator. `MutatorResult.client/server` **resolve, never
-  reject**, with `{type: 'success' | 'error'}` — the ref maps both symmetrically:
-  - `mutate(args)` — returns the underlying `MutatorResult` (still awaitable)
-  - `pending()` — true until server settles
-  - `clientPending()` — true until optimistic commit settles
-  - `clientResult()` / `serverResult()` — `MutatorResultDetails | undefined` (symmetric)
-  - `error()` — first error from either promise
-- Concurrent calls: latest-call-wins for the signals; each `mutate()` return value is
-  still independently awaitable. (Revisit if per-call tracking is needed.)
-- Known upstream limitation: mutators cannot return data on success (documented).
+Stateful ref over one registry mutator leaf (`mutators.issue.close`). Thin
+reactive projection of `zero.mutate(request)` — no retries, queues, callbacks,
+or cache interaction.
+
+- `mutate(...args)` mirrors the mutator's own call signature (no-args /
+  optional / required — reconstructed from Zero's `MutatorCallable` shape) and
+  returns a `MutatorResult`. Zero explicit generics at call sites; inference
+  flows from the `Mutator` leaf's embedded types / `DefaultTypes` augmentation;
+  multi-instance apps use `defineMutatorWithType` exactly as with queries.
+- **Never-reject guarantee.** The returned `client`/`server` promises always
+  resolve with `MutatorResultDetails`; any underlying rejection is normalized
+  to `{type:'error', error:{type:'zero', message}}`. Zero 1.8.0's own
+  `MutatorProxy` already normalizes its internal rejections the same way, so
+  this diverges from upstream by zero in shape and (today) zero in behavior —
+  it hardens an undocumented upstream property into a library contract.
+  Fire-and-forget `mutate()` calls can never produce unhandled rejections.
+- Sync failures (`provideZero` missing at inject time; no instance yet or
+  mutator not registered at mutate time) **throw synchronously** and leave ref
+  state untouched — setup errors fail fast instead of masquerading as
+  mutation outcomes.
+- Signals (latest-call-wins; one atomic state snapshot, never glitchy; each
+  `mutate()` return value stays independently awaitable):
+  - `clientPending()` — true until the optimistic apply settles
+  - `pending()` — true until the server outcome settles
+  - `clientResult()` / `serverResult()` — `MutatorResultDetails | undefined`
+  - `error()` — client error first, else server error (covers the rollback
+    sequence client-success → server-error); cleared by the next `mutate()`
+- An out-of-order settle from a superseded call is dropped via an internal
+  call ticket — it never clobbers the latest call's signals. The ticket also
+  leaves room for the deferred per-call tracking feature.
+- **Local-only instances** (`cacheURL: null`, incl. `provideZeroTesting`):
+  Zero settles `.server` only on server acks, so `pending()` stays true and
+  `serverResult()` stays `undefined` forever — honest; local-only consumers
+  key off `clientPending`/`clientResult`.
+- **Instance replacement**: `mutate()` resolves the current instance at each
+  call; ref state is *not* reset on replacement. An in-flight call on the old
+  instance settles the way Zero settles it (a zero-error details object once
+  the instance closes), reported truthfully; the next `mutate()` clears it.
+  In-place auth rotation (`connection.connect({auth})`) never replaces the
+  instance and is invisible here.
+- **Destroy**: `DestroyRef` flips an internal gate; settlements after host
+  destruction stop writing signals while awaited results and
+  rejection-normalization keep working.
+- Known upstream limitation: mutators cannot return data on success.
+- `options: { injector?: Injector }` — standard CIF pattern.
 
 ### `injectZero(options?): Signal<Zero>` — implemented
 
