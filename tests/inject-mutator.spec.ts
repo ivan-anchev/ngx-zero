@@ -476,4 +476,28 @@ describe('injectMutator', () => {
       process.off('unhandledRejection', onLeak);
     }
   });
+
+  it('normalizes a rejection whose reason cannot be coerced to a string', async () => {
+    const controlled = setupControlledZero(1);
+    const fixture = TestBed.createComponent(MutatorHost);
+    const ref = fixture.componentInstance.createIssue;
+    const hostile = {
+      [Symbol.toPrimitive](): string {
+        throw new Error('coercion boom');
+      },
+    };
+
+    const result = ref.mutate({ id: 'i1', title: 'hostile reason' });
+    controlled.call(0).client.reject(hostile);
+    controlled.call(0).server.reject(hostile);
+
+    const fallback = {
+      type: 'error',
+      error: { type: 'zero', message: 'Unknown mutation failure' },
+    };
+    await expect(result.client).resolves.toEqual(fallback);
+    await expect(result.server).resolves.toEqual(fallback);
+    expect(ref.error()).toEqual({ type: 'zero', message: 'Unknown mutation failure' });
+    expect(ref.pending()).toBe(false);
+  });
 });

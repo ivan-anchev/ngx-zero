@@ -91,12 +91,19 @@ function settleSafe(
   return promise.catch(
     (reason: unknown): MutatorResultDetails => ({
       type: 'error',
-      error: {
-        type: 'zero',
-        message: reason instanceof Error ? reason.message : String(reason),
-      },
+      error: { type: 'zero', message: describeReason(reason) },
     }),
   );
+}
+
+// Total for any unknown reason: a hostile coercion (throwing
+// Symbol.toPrimitive or message getter) must not re-reject the boundary.
+function describeReason(reason: unknown): string {
+  try {
+    return reason instanceof Error ? reason.message : String(reason);
+  } catch {
+    return 'Unknown mutation failure';
+  }
 }
 
 function noop(): void {}
