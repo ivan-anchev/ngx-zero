@@ -1,4 +1,3 @@
-import { computed } from '@angular/core';
 export type Result<T> = { result: T; error?: never } | { result?: never; error: Error };
 
 export function tryCatch(fn: () => never): Result<never>;
@@ -30,30 +29,4 @@ function isThenable(value: unknown): value is PromiseLike<unknown> {
     value !== null &&
     typeof (value as { then?: unknown }).then === 'function'
   );
-}
-
-export function pairwiseComputed<T>(computation: () => T) {
-  const source = computed(computation);
-
-  let state: { previous: T | undefined; current: T | undefined; first: boolean } = {
-    previous: undefined,
-    current: undefined,
-    first: true,
-  };
-
-  const previous = computed(() => {
-    const current = source();
-
-    if (state.first) {
-      state = { previous: undefined, current, first: false };
-      return undefined;
-    }
-
-    state.previous = state.current;
-    state.current = current;
-
-    return state.previous;
-  });
-
-  return { current: source, previous };
 }

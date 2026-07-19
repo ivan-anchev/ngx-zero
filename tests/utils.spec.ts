@@ -1,21 +1,5 @@
-import { signal } from '@angular/core';
 import { describe, expect, expectTypeOf, it } from 'vitest';
-import { pairwiseComputed, tryCatch, type Result } from '../src/utils.js';
-
-describe('pairwiseComputed', () => {
-  it('has no previous value before the first transition', () => {
-    const value = signal('first');
-    const pair = pairwiseComputed(value);
-
-    expect(pair.current()).toBe('first');
-    expect(pair.previous()).toBeUndefined();
-
-    value.set('second');
-
-    expect(pair.current()).toBe('second');
-    expect(pair.previous()).toBe('first');
-  });
-});
+import { tryCatch, type Result } from '../src/utils.js';
 
 describe('tryCatch', () => {
   it('returns the result for a sync function', () => {
