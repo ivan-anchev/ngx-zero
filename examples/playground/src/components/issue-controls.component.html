@@ -1,0 +1,17 @@
+<section class="composer" aria-label="Create an issue">
+  <div class="new-issue">
+    <label for="new-issue">New issue</label>
+    <div class="input-row">
+      <input
+        id="new-issue"
+        autocomplete="off"
+        placeholder="What needs doing?"
+        (keydown.enter)="submitTitle(titleInput)"
+        #titleInput
+      />
+      <button class="primary" type="button" (click)="submitTitle(titleInput)">
+        Add issue
+      </button>
+    </div>
+  </div>
+</section>

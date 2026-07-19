@@ -1,0 +1,188 @@
+.board {
+  margin-top: var(--space-7);
+}
+
+.board-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-4);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: var(--space-3);
+}
+
+h2 {
+  margin: 0;
+  font-size: 1.125rem;
+  letter-spacing: -0.01em;
+}
+
+.board-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.count {
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.notice {
+  margin: var(--space-3) 0 0;
+  border: 1px solid var(--positive);
+  border-radius: var(--radius);
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.8125rem;
+  color: var(--text);
+  background: var(--positive-soft);
+}
+
+.notice.error {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.issue-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.issue-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  border-bottom: 1px solid var(--border);
+  min-height: 56px;
+  padding: var(--space-2) 0;
+}
+
+.issue-list label {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  gap: var(--space-3);
+  cursor: pointer;
+}
+
+.issue-list input {
+  width: 17px;
+  height: 17px;
+  flex: none;
+  accent-color: var(--accent);
+}
+
+.issue-copy {
+  display: grid;
+  min-width: 0;
+}
+
+.issue-copy strong {
+  overflow-wrap: anywhere;
+  font-size: 0.9375rem;
+}
+
+.issue-list small {
+  margin-top: 1px;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.issue-list li.completed strong {
+  color: var(--completed);
+  text-decoration: line-through;
+}
+
+.issue-list li.empty {
+  justify-content: center;
+  min-height: 120px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.filter {
+  min-height: var(--control-sm);
+  padding: var(--space-1) var(--space-2);
+  font-size: 0.8125rem;
+}
+
+.filter.active {
+  color: var(--accent-hover);
+  background: var(--accent-soft);
+}
+
+.delete {
+  display: grid;
+  width: var(--control-sm);
+  min-height: var(--control-sm);
+  place-items: center;
+  flex: none;
+  padding: 0;
+  color: var(--muted);
+  opacity: 0.52;
+}
+
+.delete svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.25;
+}
+
+.issue-list li:hover .delete,
+.delete:focus-visible {
+  opacity: 0.82;
+}
+
+.delete:hover {
+  color: var(--danger);
+  background: var(--danger-soft);
+  opacity: 1;
+}
+
+.skeleton {
+  justify-content: flex-start;
+  gap: var(--space-3);
+}
+
+.skeleton i,
+.skeleton span {
+  display: block;
+  border-radius: var(--radius);
+  background: var(--surface-subtle);
+}
+
+.skeleton i {
+  width: 17px;
+  height: 17px;
+}
+
+.skeleton span {
+  width: min(44%, 280px);
+  height: 12px;
+}
+
+@media (max-width: 520px) {
+  .board {
+    margin-top: var(--space-5);
+  }
+
+  .board-heading {
+    align-items: flex-start;
+  }
+
+  .board-actions {
+    align-items: flex-end;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+}

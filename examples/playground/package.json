@@ -1,0 +1,43 @@
+{
+  "name": "ngx-zero-playground",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "dev:cache": "mkdir -p .zero && zero-cache-dev",
+    "dev:all": "concurrently -k -n cache,vite -c blue,green \"pnpm dev:cache\" \"pnpm dev\"",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit && vite build",
+    "generate": "drizzle-zero generate -o src/zero/schema.gen.ts",
+    "db:up": "docker compose up -d --wait",
+    "db:push": "drizzle-kit push --force",
+    "db:seed": "tsx src/db/seed.ts",
+    "db:setup": "pnpm db:up && pnpm db:push && pnpm db:seed"
+  },
+  "dependencies": {
+    "@angular/core": "20.3.26",
+    "@angular/platform-browser": "20.3.26",
+    "@rocicorp/zero": "1.8.0",
+    "dotenv": "^17.4.2",
+    "drizzle-orm": "^0.45.2",
+    "hono": "^4.12.30",
+    "jose": "^6.2.3",
+    "ngx-zero": "workspace:*",
+    "pg": "^8.22.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@analogjs/vite-plugin-angular": "2.6.3",
+    "@angular/build": "20.3.26",
+    "@angular/compiler": "20.3.26",
+    "@hono/vite-dev-server": "^0.26.1",
+    "@types/pg": "^8.20.0",
+    "concurrently": "^10.0.3",
+    "drizzle-kit": "^0.31.10",
+    "drizzle-zero": "^0.20.0",
+    "tsx": "^4.23.1",
+    "typescript": "~5.9.2",
+    "vite": "^7.3.6"
+  }
+}

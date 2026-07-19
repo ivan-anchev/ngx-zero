@@ -1,0 +1,31 @@
+<section class="session-tools" aria-labelledby="session-tools-heading">
+  <div class="session-heading">
+    <h2 id="session-tools-heading">Session tools</h2>
+    <p aria-live="polite">
+      {{ authAction() ?? status() }}
+    </p>
+  </div>
+  <div class="actions">
+    <button
+      type="button"
+      [disabled]="authAction() !== undefined"
+      (click)="userSwitched.emit()"
+    >
+      Switch to {{ otherUser() }}
+    </button>
+    <button
+      type="button"
+      [disabled]="authAction() !== undefined"
+      (click)="authRotated.emit()"
+    >
+      Rotate auth
+    </button>
+    <button
+      type="button"
+      [disabled]="authAction() !== undefined"
+      (click)="shortTokenRequested.emit()"
+    >
+      Use 15s token
+    </button>
+  </div>
+</section>

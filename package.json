@@ -37,6 +37,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "playground": "pnpm build && pnpm --filter ngx-zero-playground dev:all",
+    "playground:db": "pnpm --filter ngx-zero-playground db:setup",
+    "playground:build": "pnpm build && pnpm --filter ngx-zero-playground build",
     "check:package": "pnpm build && publint && attw --pack . --profile esm-only",
     "prepare": "husky"
   },

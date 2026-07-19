@@ -1,0 +1,61 @@
+.composer {
+  margin-top: var(--space-7);
+}
+
+label {
+  display: block;
+  margin-bottom: var(--space-2);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.input-row {
+  display: flex;
+  gap: var(--space-2);
+}
+
+input {
+  min-width: 0;
+  min-height: var(--control-lg);
+  flex: 1;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  padding: var(--space-2) var(--space-3);
+  color: var(--text);
+  background: var(--bg);
+  transition:
+    border-color var(--transition),
+    box-shadow var(--transition);
+}
+
+input::placeholder {
+  color: var(--muted);
+}
+
+input:hover {
+  border-color: var(--muted);
+}
+
+.primary {
+  min-height: var(--control-lg);
+  border-color: var(--accent);
+  padding-inline: var(--space-4);
+  font-weight: 600;
+  color: var(--bg);
+  background: var(--accent);
+}
+
+.primary:hover {
+  border-color: var(--accent-hover);
+  background: var(--accent-hover);
+}
+
+@media (max-width: 480px) {
+  .input-row {
+    display: grid;
+  }
+
+  .primary {
+    width: 100%;
+  }
+}
