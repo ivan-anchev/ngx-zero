@@ -20,6 +20,7 @@ class FakeTypedView {
   unsubscribed = false;
   destroyed = false;
   throwOnUnsubscribe = false;
+  throwOnAddListener = false;
   readonly ttlUpdates: TTL[] = [];
 
   constructor(
@@ -35,6 +36,9 @@ class FakeTypedView {
       error?: ErroredQuery,
     ) => void,
   ): () => void {
+    if (this.throwOnAddListener) {
+      throw new Error('addListener boom');
+    }
     this.listener = listener;
     listener(this.data, this.initialStatus, this.initialError);
     return () => {
@@ -415,6 +419,33 @@ describe('QueryViewController', () => {
     // The failed spec never applied, so an ordinary reconcile retries it.
     query.reconcile(next);
     expect(zero.queries).toHaveLength(2);
+    expect(first.destroyed).toBe(true);
+    expect(query.data()).toEqual([{ id: 'fresh' }]);
+    expect(query.status()).toBe('complete');
+  });
+
+  it('keeps the prior session live and releases the candidate when addListener throws', () => {
+    const first = new FakeTypedView([{ id: 'old' }], 'complete');
+    const second = new FakeTypedView([{ id: 'never' }], 'complete');
+    second.throwOnAddListener = true;
+    const third = new FakeTypedView([{ id: 'fresh' }], 'complete');
+    const zero = new MaterializeHarness([first, second, third]);
+    const query = controller();
+
+    query.reconcile(spec(zero, 'old'));
+
+    const next = spec(zero, 'new');
+    expect(() => query.reconcile(next)).toThrow(/addListener boom/);
+
+    // The failed candidate view is released; the old session is untouched.
+    expect(second.destroyed).toBe(true);
+    expect(first.unsubscribed).toBe(false);
+    expect(first.destroyed).toBe(false);
+    first.emit([{ id: 'still-live' }], 'complete');
+    expect(query.data()).toEqual([{ id: 'still-live' }]);
+
+    // An ordinary reconcile of the same spec succeeds afterwards.
+    query.reconcile(next);
     expect(first.destroyed).toBe(true);
     expect(query.data()).toEqual([{ id: 'fresh' }]);
     expect(query.status()).toBe('complete');
