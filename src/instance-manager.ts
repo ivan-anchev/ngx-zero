@@ -19,7 +19,7 @@ import type {
   ZeroOptionsOrExternalSource,
   ZeroSourceFactory,
 } from './types.js';
-import { pairwiseComputed, tryCatch } from './utils.js';
+import { tryCatch } from './utils.js';
 
 export const ZERO_INSTANCE = new InjectionToken<ZeroInstanceManager>(
   'ngx-zero/instance-manager',
@@ -46,7 +46,7 @@ export class ZeroInstanceManager {
 
   readonly #sourceFactory: ZeroSourceFactory;
 
-  readonly #source = pairwiseComputed<ZeroOptionsOrExternalSource>(() =>
+  readonly #source = computed<ZeroOptionsOrExternalSource>(() =>
     runInInjectionContext(this.#injector, this.#sourceFactory),
   );
 
@@ -85,23 +85,25 @@ export class ZeroInstanceManager {
 
     // Environment initializers run before component construction and outside
     // any reactive context. Reconcile once synchronously so field initializers
-    // can use the Zero instance. Prime previous() at the initial source too.
-    const source = this.#source.current();
-    void this.#source.previous();
-    this.#reconcile(source, undefined);
+    // can use the Zero instance, then track the last reconciled source so the
+    // effect only reacts to changes made after this point (or to rotations).
+    let previousSource = this.#source();
+    this.#reconcile(previousSource, undefined);
 
     effect(
       () => {
-        const source = this.#source.current();
-        const previousSource = this.#source.previous();
+        const source = this.#source();
 
         this.#rotationGeneration();
 
-        if (previousSource === undefined && !this.#rotationPending) {
+        if (source === previousSource && !this.#rotationPending) {
           return;
         }
 
-        untracked(() => this.#reconcile(source, previousSource));
+        const previous = previousSource;
+        previousSource = source;
+
+        untracked(() => this.#reconcile(source, previous));
       },
       { injector: this.#injector },
     );
