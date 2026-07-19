@@ -18,10 +18,8 @@ export interface ResolvedQuery {
 }
 
 /**
- * Resolves like `zero.materialize` does internally, so Zero's validators,
- * context, and AST semantics define identity. The key includes the result
- * format because `.one()` and `.limit(1)` share an AST hash while returning
- * different shapes.
+ * Resolves like `zero.materialize` does, so Zero defines identity. The key
+ * includes the format because `.one()` and `.limit(1)` share an AST hash.
  */
 export function resolveQuery(
   zero: Zero,
@@ -29,8 +27,7 @@ export function resolveQuery(
 ): ResolvedQuery {
   const query = addContextToQuery(value, zero.context);
 
-  // An uncalled registry query (`queries.issue.mine` without `()`) passes
-  // through resolution untouched.
+  // An uncalled registry query passes through resolution untouched.
   if (!(queryInternalsTag in (query as object))) {
     throw ngxZeroError(
       'injectQuery() thunk must return a Query or a QueryRequest ' +

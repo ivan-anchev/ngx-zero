@@ -13,10 +13,7 @@ import { tryCatch } from './utils.js';
 
 export const DISABLED: unique symbol = Symbol('ngx-zero/disabled');
 
-/**
- * The spec computed in inject-query.ts dedupes on `(zero, key)`, so a new
- * reference means the identity changed — reference equality is the fast path.
- */
+/** Deduped on `(zero, key)` upstream — reference equality is the fast path. */
 export type QuerySpec = EnabledQuerySpec | DisabledQuerySpec;
 
 export interface EnabledQuerySpec {
@@ -32,7 +29,7 @@ export interface DisabledQuerySpec {
   readonly query: undefined;
 }
 
-/** One materialization = one session. `alive` is the stale-write guard. */
+/** `alive` is the stale-write guard. */
 interface ViewSession {
   alive: boolean;
   view: TypedView<unknown>;
@@ -69,12 +66,7 @@ export class QueryViewController {
     this.#ttl = options.ttl;
   }
 
-  /**
-   * The candidate is built before any live state is touched: on a throw,
-   * `#applied` does not advance and the prior session stays fully live. Two
-   * views on the same query may briefly coexist; Zero dedupes the IVM
-   * pipeline by query hash.
-   */
+  /** Candidate-first: on a throw the prior session stays fully live. */
   reconcile(spec: QuerySpec, options: { force?: boolean } = {}): void {
     if (this.#destroyed) {
       return;
@@ -89,8 +81,7 @@ export class QueryViewController {
       return;
     }
 
-    // Bridge only a same-instance enabled->enabled key change, never a
-    // forced retry and never an instance swap (no old-user data flash).
+    // Never bridge a forced retry or an instance swap (no old-user flash).
     const previous = this.#applied;
     const bridgeAllowed =
       this.#keepPreviousData &&
@@ -106,11 +97,7 @@ export class QueryViewController {
     });
   }
 
-  /**
-   * The new state is applied even if retiring the old session throws — the
-   * applied spec, installed session, and signals must never diverge. The
-   * retirement error surfaces only after the commit completes.
-   */
+  /** Applies the new state even if retirement throws; the error surfaces after. */
   #commit(spec: QuerySpec, applyNewState: () => void): void {
     this.#applied = spec;
     const retired = tryCatch(() => this.#teardown());
@@ -137,8 +124,7 @@ export class QueryViewController {
   }
 
   /**
-   * addListener fires synchronously with the current snapshot (verified in
-   * zero@1.8.0). The old session is still live here, so that emission is
+   * addListener fires synchronously (zero@1.8.0); that first emission is
    * captured and applied by `install()` at commit time.
    */
   #buildCandidate(spec: EnabledQuerySpec): {
@@ -168,7 +154,6 @@ export class QueryViewController {
 
     const subscribed = tryCatch(() => view.addListener(listener));
     if (subscribed.error) {
-      // Failed candidates leave nothing behind.
       session.alive = false;
       view.destroy();
       throw subscribed.error;
@@ -194,11 +179,7 @@ export class QueryViewController {
     );
   }
 
-  /**
-   * The keepPreviousData bridge is the skip of this one initial overwrite,
-   * only when the new view would otherwise flash empty at 'unknown'. Data
-   * keeps the previous key's rows; status belongs to the new view.
-   */
+  /** The bridge skips this one overwrite when the new view starts empty at 'unknown'. */
   #applyInitialSnapshot(
     { data, resultType, error }: Snapshot,
     bridgeAllowed: boolean,
@@ -211,7 +192,6 @@ export class QueryViewController {
     this.#write(data, resultType, error);
   }
 
-  /** Single write path: observers only ever see a consistent triple. */
   #write(data: unknown, status: QueryStatus, error?: ErroredQuery): void {
     this.#data.set(data);
     this.#status.set(status);
@@ -243,7 +223,6 @@ export class QueryViewController {
     }
     this.#destroyed = true;
     this.#teardown();
-    // Signals stay as-is: the host is gone.
   }
 }
 

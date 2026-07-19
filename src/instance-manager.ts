@@ -83,10 +83,8 @@ export class ZeroInstanceManager {
 
     this.#started = true;
 
-    // Environment initializers run before component construction and outside
-    // any reactive context. Reconcile once synchronously so field initializers
-    // can use the Zero instance, then track the last reconciled source so the
-    // effect only reacts to changes made after this point (or to rotations).
+    // Reconcile synchronously so component field initializers can use the
+    // instance; the effect reacts only to later changes and rotations.
     let previousSource = this.#source();
     this.#reconcile(previousSource, undefined);
 
