@@ -75,6 +75,22 @@ describe('MutatorCallTracker', () => {
     expect(tracker.error()).toBeUndefined();
   });
 
+  it('tracks a server settle that arrives before the client settle', () => {
+    const tracker = new MutatorCallTracker();
+    const callId = tracker.begin();
+
+    tracker.settleServer(callId, serverFailure);
+    expect(tracker.clientPending()).toBe(true);
+    expect(tracker.pending()).toBe(false);
+    expect(tracker.serverResult()).toBe(serverFailure);
+    expect(tracker.error()).toBe(serverFailure.error);
+
+    tracker.settleClient(callId, success);
+    expect(tracker.clientPending()).toBe(false);
+    expect(tracker.clientResult()).toBe(success);
+    expect(tracker.error()).toBe(serverFailure.error);
+  });
+
   it('drops out-of-order results from superseded calls', () => {
     const tracker = new MutatorCallTracker();
     const firstCallId = tracker.begin();
