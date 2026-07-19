@@ -13,6 +13,7 @@ import {
 } from '@rocicorp/zero';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { injectMutator } from '../src/inject-mutator.js';
+import { MutatorCallTracker } from '../src/mutator-call-tracker.js';
 import { ZERO_CONSTRUCTOR, ZERO_INSTANCE } from '../src/instance-manager.js';
 import { provideZero } from '../src/provide-zero.js';
 import { provideZeroTesting } from '../src/provide-zero-testing.js';
@@ -474,6 +475,52 @@ describe('injectMutator', () => {
       });
     } finally {
       process.off('unhandledRejection', onLeak);
+    }
+  });
+
+  it('surfaces a throwing settle callback instead of swallowing it', async () => {
+    const priorListeners = process.listeners('unhandledRejection');
+    process.removeAllListeners('unhandledRejection');
+    const leaks: unknown[] = [];
+    const onLeak = (reason: unknown): void => {
+      leaks.push(reason);
+    };
+    process.on('unhandledRejection', onLeak);
+    // Under zone.js the patched Promise reports through Zone's hook, not
+    // process; Zone wraps the reason in an Error carrying `.rejection`.
+    const zone = (globalThis as { Zone?: { __symbol__(name: string): string } }).Zone;
+    const zoneRecord = zone as unknown as Record<string, unknown> | undefined;
+    const zoneKey = zone?.__symbol__('unhandledPromiseRejectionHandler');
+    const priorZoneHandler = zoneKey === undefined ? undefined : zoneRecord?.[zoneKey];
+    if (zoneRecord && zoneKey !== undefined) {
+      zoneRecord[zoneKey] = onLeak;
+    }
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(MutatorCallTracker.prototype, 'settleClient').mockImplementation(() => {
+      throw new Error('tracker defect');
+    });
+    try {
+      const controlled = setupControlledZero(1);
+      const fixture = TestBed.createComponent(MutatorHost);
+
+      fixture.componentInstance.createIssue.mutate({ id: 'i1', title: 'defect' });
+      controlled.call(0).client.resolve({ type: 'success' });
+      await new Promise(resolve => setTimeout(resolve, 10));
+
+      const unwrapped = leaks.map(reason =>
+        reason instanceof Error && 'rejection' in reason
+          ? (reason as unknown as { rejection: unknown }).rejection
+          : reason,
+      );
+      expect(unwrapped).toEqual([new Error('tracker defect')]);
+    } finally {
+      process.off('unhandledRejection', onLeak);
+      for (const listener of priorListeners) {
+        process.on('unhandledRejection', listener);
+      }
+      if (zoneRecord && zoneKey !== undefined) {
+        zoneRecord[zoneKey] = priorZoneHandler;
+      }
     }
   });
 

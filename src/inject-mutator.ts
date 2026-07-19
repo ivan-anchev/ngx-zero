@@ -68,8 +68,10 @@ export function injectMutator(
 
     const client = settleSafe(raw.client);
     const server = settleSafe(raw.server);
-    client.then(details => tracker.settleClient(callId, details)).catch(noop);
-    server.then(details => tracker.settleServer(callId, details)).catch(noop);
+    // Two-arg then: the rejection handler is defensive-only (settleSafe is
+    // total); a throwing settle must stay observable, not swallowed.
+    void client.then(details => tracker.settleClient(callId, details), noop);
+    void server.then(details => tracker.settleServer(callId, details), noop);
 
     return { client, server };
   };
