@@ -79,6 +79,42 @@ function deferred<T>(): {
   return { promise, resolve, reject };
 }
 
+interface ControlledCall {
+  readonly client: ReturnType<typeof deferred<MutatorResultDetails>>;
+  readonly server: ReturnType<typeof deferred<MutatorResultDetails>>;
+}
+
+interface ControlledZero {
+  readonly zero: Zero;
+  readonly calls: readonly ControlledCall[];
+  readonly requests: unknown[];
+}
+
+/** Minimal external Zero whose per-call client/server promises settle manually. */
+function controlledZero(expectedCalls: number): ControlledZero {
+  const calls = Array.from({ length: expectedCalls }, () => ({
+    client: deferred<MutatorResultDetails>(),
+    server: deferred<MutatorResultDetails>(),
+  }));
+  const requests: unknown[] = [];
+  const zero = {
+    mutate: (request: unknown) => {
+      const call = calls[requests.length];
+      if (call === undefined) {
+        throw new Error('controlledZero: unexpected extra mutate() call');
+      }
+      requests.push(request);
+      return { client: call.client.promise, server: call.server.promise };
+    },
+  } as unknown as Zero;
+  return { zero, calls, requests };
+}
+
+const serverRejection = {
+  type: 'error',
+  error: { type: 'app', message: 'server said no', details: undefined },
+} as const satisfies MutatorResultDetails;
+
 afterEach(() => {
   TestBed.resetTestingModule();
   vi.restoreAllMocks();
@@ -231,31 +267,23 @@ describe('injectMutator', () => {
   });
 
   it('normalizes rejected mutation promises into Zero error details', async () => {
-    const client = deferred<MutatorResultDetails>();
-    const server = deferred<MutatorResultDetails>();
-    const requests: unknown[] = [];
-    const zero = {
-      mutate: (request: unknown) => {
-        requests.push(request);
-        return { client: client.promise, server: server.promise };
-      },
-    } as unknown as Zero;
+    const controlled = controlledZero(1);
     TestBed.configureTestingModule({
-      providers: [provideTestChangeDetection(), provideZero({ zero })],
+      providers: [provideTestChangeDetection(), provideZero({ zero: controlled.zero })],
     });
     const fixture = TestBed.createComponent(MutatorHost);
     const ref = fixture.componentInstance.createIssue;
 
     const result = ref.mutate({ id: 'i1', title: 'hello' });
-    const request = requests[0] as {
+    const request = controlled.requests[0] as {
       mutator: { readonly mutatorName: string };
       args: unknown;
     };
     expect(request.mutator.mutatorName).toBe('issue.create');
     expect(request.args).toEqual({ id: 'i1', title: 'hello' });
 
-    client.reject(new Error('client offline'));
-    server.reject('server offline');
+    controlled.calls[0].client.reject(new Error('client offline'));
+    controlled.calls[0].server.reject('server offline');
 
     await expect(result.client).resolves.toEqual({
       type: 'error',
@@ -268,5 +296,87 @@ describe('injectMutator', () => {
     expect(ref.clientPending()).toBe(false);
     expect(ref.pending()).toBe(false);
     expect(ref.error()).toEqual({ type: 'zero', message: 'client offline' });
+  });
+
+  it('projects a client success followed by a server rollback in order', async () => {
+    const controlled = controlledZero(1);
+    TestBed.configureTestingModule({
+      providers: [provideTestChangeDetection(), provideZero({ zero: controlled.zero })],
+    });
+    const fixture = TestBed.createComponent(MutatorHost);
+    const ref = fixture.componentInstance.createIssue;
+
+    const result = ref.mutate({ id: 'i1', title: 'rollback' });
+
+    controlled.calls[0].client.resolve({ type: 'success' });
+    await expect(result.client).resolves.toEqual({ type: 'success' });
+    expect(ref.clientPending()).toBe(false);
+    expect(ref.clientResult()).toEqual({ type: 'success' });
+    expect(ref.pending()).toBe(true);
+    expect(ref.serverResult()).toBeUndefined();
+    expect(ref.error()).toBeUndefined();
+
+    controlled.calls[0].server.resolve(serverRejection);
+    await expect(result.server).resolves.toEqual(serverRejection);
+    expect(ref.pending()).toBe(false);
+    expect(ref.serverResult()).toEqual(serverRejection);
+    expect(ref.error()).toEqual(serverRejection.error);
+  });
+
+  it('keeps signals on the latest call while a superseded call settles late', async () => {
+    const controlled = controlledZero(2);
+    TestBed.configureTestingModule({
+      providers: [provideTestChangeDetection(), provideZero({ zero: controlled.zero })],
+    });
+    const fixture = TestBed.createComponent(MutatorHost);
+    const ref = fixture.componentInstance.createIssue;
+
+    const first = ref.mutate({ id: 'i1', title: 'first' });
+    const second = ref.mutate({ id: 'i2', title: 'second' });
+
+    controlled.calls[0].client.resolve({ type: 'success' });
+    controlled.calls[0].server.resolve(serverRejection);
+    await expect(first.client).resolves.toEqual({ type: 'success' });
+    await expect(first.server).resolves.toEqual(serverRejection);
+
+    expect(ref.clientPending()).toBe(true);
+    expect(ref.pending()).toBe(true);
+    expect(ref.clientResult()).toBeUndefined();
+    expect(ref.serverResult()).toBeUndefined();
+    expect(ref.error()).toBeUndefined();
+
+    controlled.calls[1].client.resolve({ type: 'success' });
+    await expect(second.client).resolves.toEqual({ type: 'success' });
+    expect(ref.clientPending()).toBe(false);
+    expect(ref.clientResult()).toEqual({ type: 'success' });
+    expect(ref.pending()).toBe(true);
+  });
+
+  it('never leaks unhandled rejections from ignored mutate() results', async () => {
+    const leaks: unknown[] = [];
+    const onLeak = (reason: unknown): void => {
+      leaks.push(reason);
+    };
+    process.on('unhandledRejection', onLeak);
+    try {
+      const controlled = controlledZero(1);
+      TestBed.configureTestingModule({
+        providers: [provideTestChangeDetection(), provideZero({ zero: controlled.zero })],
+      });
+      const fixture = TestBed.createComponent(MutatorHost);
+
+      fixture.componentInstance.createIssue.mutate({ id: 'i1', title: 'ignored' });
+      controlled.calls[0].client.reject(new Error('client leak'));
+      controlled.calls[0].server.reject(new Error('server leak'));
+      await new Promise(resolve => setTimeout(resolve, 10));
+
+      expect(leaks).toEqual([]);
+      expect(fixture.componentInstance.createIssue.error()).toEqual({
+        type: 'zero',
+        message: 'client leak',
+      });
+    } finally {
+      process.off('unhandledRejection', onLeak);
+    }
   });
 });
