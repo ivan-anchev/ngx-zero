@@ -87,8 +87,11 @@ readonly close  = injectMutation(mutators.issue.close);
   render-phase materialization; Angular has neither. Zero dedupes the IVM pipeline by
   query hash anyway. Cleanup via `DestroyRef` marks the session stale, unsubscribes the
   listener, then destroys the view. Missing `provideZero` throws setup guidance at inject
-  time; thrown thunks and materialization failures propagate without half-applying a new
-  controller session.
+  time. Reconcile is candidate-first: the new session is materialized and subscribed
+  before the live one is retired, then swapped in atomically together with its initial
+  snapshot. Thrown thunks and materialization/subscription failures therefore propagate
+  while the prior session remains fully live — still subscribed, still updating the
+  signals — and the next identity change or `retry()` reconciles normally.
 
 ### `injectMutation(mutator, options?): MutationRef`
 
