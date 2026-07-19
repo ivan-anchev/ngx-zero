@@ -1,4 +1,5 @@
 import type {
+  AnyQuery,
   ErroredQuery,
   ResultType,
   TTL,
@@ -6,7 +7,6 @@ import type {
   Zero,
 } from '@rocicorp/zero';
 import { describe, expect, it } from 'vitest';
-import type { AnyQueryRequest } from '../src/query-identity.js';
 import {
   DISABLED,
   QueryViewController,
@@ -59,20 +59,20 @@ class FakeTypedView {
 }
 
 class MaterializeHarness {
-  readonly requests: unknown[] = [];
+  readonly queries: unknown[] = [];
   readonly optionsSeen: Array<{ ttl?: TTL } | undefined> = [];
   failNext = false;
 
   constructor(readonly views: FakeTypedView[]) {}
 
-  materialize(request: unknown, options?: { ttl?: TTL }): TypedView<unknown> {
+  materialize(query: unknown, options?: { ttl?: TTL }): TypedView<unknown> {
     if (this.failNext) {
       this.failNext = false;
       throw new Error('materialize boom');
     }
-    this.requests.push(request);
+    this.queries.push(query);
     this.optionsSeen.push(options);
-    const view = this.views[this.requests.length - 1];
+    const view = this.views[this.queries.length - 1];
     if (!view) {
       throw new Error('no fake view configured');
     }
@@ -80,11 +80,9 @@ class MaterializeHarness {
   }
 }
 
-const request = (name: string): AnyQueryRequest => ({
-  query: { queryName: name },
-  args: undefined,
-  '~': 'QueryRequest',
-});
+/** Stand-in for a context-resolved query; the harness never inspects it. */
+const fakeQuery = (name: string): AnyQuery =>
+  ({ fake: name }) as unknown as AnyQuery;
 
 const spec = (
   zero: MaterializeHarness,
@@ -92,7 +90,7 @@ const spec = (
 ): QuerySpec => ({
   zero: zero as unknown as Zero,
   key,
-  request: request(key),
+  query: fakeQuery(key),
 });
 
 const controller = (keepPreviousData = false): QueryViewController =>
@@ -109,7 +107,7 @@ describe('QueryViewController', () => {
     expect(query.data()).toEqual([{ id: 'i1' }]);
     expect(query.status()).toBe('complete');
     expect(query.error()).toBeUndefined();
-    expect(zero.requests).toHaveLength(1);
+    expect(zero.queries).toHaveLength(1);
   });
 
   it('tears down the prior session and drops stale writes on a key change', () => {
@@ -177,7 +175,7 @@ describe('QueryViewController', () => {
       query.reconcile(spec(zero, key));
     }
 
-    expect(zero.requests).toHaveLength(5);
+    expect(zero.queries).toHaveLength(5);
     for (const view of views.slice(0, -1)) {
       expect(view.unsubscribed).toBe(true);
       expect(view.destroyed).toBe(true);
@@ -207,7 +205,7 @@ describe('QueryViewController', () => {
 
     query.reconcile(spec(zero, 'other'));
     query.destroy();
-    expect(zero.requests).toHaveLength(2);
+    expect(zero.queries).toHaveLength(2);
   });
 
   it('surfaces listener errors and clears them atomically on the next success', () => {
@@ -282,7 +280,7 @@ describe('QueryViewController', () => {
     enabled.reconcile({
       zero: enableZero as unknown as Zero,
       key: DISABLED,
-      request: undefined,
+      query: undefined,
     });
     enabled.reconcile(spec(enableZero, 'all'));
     expect(enabled.data()).toEqual([]);
@@ -332,7 +330,7 @@ describe('QueryViewController', () => {
 
     query.updateTTL(120);
     expect(first.ttlUpdates).toEqual([120]);
-    expect(zero.requests).toHaveLength(1);
+    expect(zero.queries).toHaveLength(1);
 
     query.reconcile(spec(zero, 'new'));
     expect(zero.optionsSeen).toEqual([{ ttl: 60 }, { ttl: 60 }]);
@@ -353,22 +351,22 @@ describe('QueryViewController', () => {
     const disabled: QuerySpec = {
       zero: zero as unknown as Zero,
       key: DISABLED,
-      request: undefined,
+      query: undefined,
     };
     const query = controller();
 
     query.reconcile(disabled);
     query.retry(() => disabled);
-    expect(zero.requests).toHaveLength(0);
+    expect(zero.queries).toHaveLength(0);
     expect(query.status()).toBe('disabled');
 
     const enabled = spec(zero, 'all');
     query.reconcile(enabled);
-    expect(zero.requests).toHaveLength(1);
+    expect(zero.queries).toHaveLength(1);
 
     query.destroy();
     query.retry(() => enabled);
-    expect(zero.requests).toHaveLength(1);
+    expect(zero.queries).toHaveLength(1);
   });
 
   it('hard-refreshes on retry during a bridge instead of keeping previous data', () => {
@@ -386,7 +384,7 @@ describe('QueryViewController', () => {
     query.retry(() => next);
 
     expect(second.destroyed).toBe(true);
-    expect(zero.requests).toHaveLength(3);
+    expect(zero.queries).toHaveLength(3);
     expect(query.data()).toEqual([]);
     expect(query.status()).toBe('unknown');
   });
@@ -411,7 +409,7 @@ describe('QueryViewController', () => {
     expect(first.ttlUpdates).toEqual([]);
 
     query.reconcile(next);
-    expect(zero.requests).toHaveLength(1);
+    expect(zero.queries).toHaveLength(1);
 
     query.retry(() => next);
     expect(query.data()).toEqual([{ id: 'fresh' }]);
@@ -434,7 +432,7 @@ describe('QueryViewController', () => {
     query.updateTTL(42);
     expect(second.ttlUpdates).toEqual([42]);
 
-    query.reconcile({ zero: current.zero, key: DISABLED, request: undefined });
+    query.reconcile({ zero: current.zero, key: DISABLED, query: undefined });
     expect(second.destroyed).toBe(true);
     expect(query.data()).toBeUndefined();
     expect(query.status()).toBe('disabled');

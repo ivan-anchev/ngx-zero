@@ -21,7 +21,7 @@ import type {
 import { ngxZeroError } from './errors.js';
 import { ZERO_INSTANCE } from './instance-manager.js';
 import {
-  queryIdentityKey,
+  resolveQuery,
   type AnyQueryOrRequest,
 } from './query-identity.js';
 import type {
@@ -108,9 +108,13 @@ export function injectQuery(
     () => {
       const zero = manager.zeroOrThrow();
       const result = queryThunk();
-      return result
-        ? { zero, key: queryIdentityKey(result), request: result }
-        : { zero, key: DISABLED, request: undefined };
+      if (!result) {
+        return { zero, key: DISABLED, query: undefined };
+      }
+      // Resolution builds and hashes the AST on every thunk run — the same
+      // per-render cost Zero's own React binding pays. Key-equal reruns are
+      // deduped by `equal` below.
+      return { zero, ...resolveQuery(zero, result) };
     },
     { equal: (a, b) => a.zero === b.zero && a.key === b.key },
   );

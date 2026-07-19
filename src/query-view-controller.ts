@@ -1,16 +1,13 @@
 import { signal, untracked, type Signal } from '@angular/core';
 import type {
+  AnyQuery,
   ErroredQuery,
   ResultType,
   TTL,
   TypedView,
   Zero,
 } from '@rocicorp/zero';
-import {
-  materializeQuery,
-  type AnyQueryOrRequest,
-  type QueryKey,
-} from './query-identity.js';
+import type { QueryKey } from './query-identity.js';
 import type { QueryStatus } from './query-ref.js';
 
 export const DISABLED: unique symbol = Symbol('ngx-zero/disabled');
@@ -25,13 +22,14 @@ export type QuerySpec = EnabledQuerySpec | DisabledQuerySpec;
 export interface EnabledQuerySpec {
   readonly zero: Zero;
   readonly key: QueryKey;
-  readonly request: AnyQueryOrRequest;
+  /** Already resolved against `zero`'s context by resolveQuery(). */
+  readonly query: AnyQuery;
 }
 
 export interface DisabledQuerySpec {
   readonly zero: Zero;
   readonly key: typeof DISABLED;
-  readonly request: undefined;
+  readonly query: undefined;
 }
 
 /** One materialization = one session. `alive` is the stale-write guard. */
@@ -134,9 +132,10 @@ export class QueryViewController {
   }
 
   #materialize(spec: EnabledQuerySpec, bridgeAllowed: boolean): void {
-    const view = materializeQuery(
-      spec.zero,
-      spec.request,
+    // spec.query is already context-resolved, so Zero's public materialize
+    // signature accepts it as-is; the annotation pins the erased row type.
+    const view: TypedView<unknown> = spec.zero.materialize(
+      spec.query,
       this.#ttl === undefined ? undefined : { ttl: this.#ttl },
     );
 
