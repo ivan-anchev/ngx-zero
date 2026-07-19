@@ -169,6 +169,31 @@ describe('QueryViewController', () => {
     expect(query.data()).toEqual([{ id: 'later' }]);
   });
 
+  it('resets to disabled even when the old session unsubscribe throws', () => {
+    const first = new FakeTypedView([{ id: 'old' }], 'complete');
+    first.throwOnUnsubscribe = true;
+    const zero = new MaterializeHarness([first]);
+    const query = controller();
+
+    query.reconcile(spec(zero, 'old'));
+    expect(() =>
+      query.reconcile({
+        zero: zero as unknown as Zero,
+        key: DISABLED,
+        query: undefined,
+      }),
+    ).toThrow(/unsubscribe boom/);
+
+    // The disabled state is fully committed despite the retirement error...
+    expect(query.data()).toBeUndefined();
+    expect(query.status()).toBe('disabled');
+    expect(query.error()).toBeUndefined();
+    // ...the old view is released, and its writes stay dead.
+    expect(first.destroyed).toBe(true);
+    first.emit([{ id: 'stale' }], 'complete');
+    expect(query.status()).toBe('disabled');
+  });
+
   it('destroys every intermediate view under rapid key flapping and keeps the last key', () => {
     const views = ['a', 'b', 'c', 'd', 'e'].map(
       id => new FakeTypedView([{ id }], 'complete'),

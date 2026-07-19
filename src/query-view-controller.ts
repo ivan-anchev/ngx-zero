@@ -85,12 +85,7 @@ export class QueryViewController {
     }
 
     if (spec.key === DISABLED) {
-      // Nothing failure-prone here: retire first, then reset the signals.
-      this.#applied = spec;
-      this.#teardown();
-      this.#data.set(undefined);
-      this.#status.set('disabled');
-      this.#error.set(undefined);
+      this.#commit(spec, () => this.#write(undefined, 'disabled'));
       return;
     }
 
@@ -104,16 +99,25 @@ export class QueryViewController {
       previous.key !== DISABLED &&
       previous.zero === spec.zero;
 
-    // All failure-prone work happens here, before the swap below.
+    // All failure-prone work (materialize + subscribe) happens here, before
+    // the commit below.
     const candidate = this.#buildCandidate(spec);
+    this.#commit(spec, () => {
+      this.#session = candidate.session;
+      candidate.install(bridgeAllowed);
+    });
+  }
 
-    // Atomic swap. The candidate installs even if retiring the old session
-    // throws (unsubscribe failure): the applied spec and the installed
-    // session must never diverge. The retirement error surfaces after.
+  /**
+   * Atomically applies a spec: advances `#applied`, retires the old session,
+   * and applies the new state even if retirement throws (unsubscribe
+   * failure) — the applied spec, installed session, and signals must never
+   * diverge. The retirement error surfaces only after the commit completes.
+   */
+  #commit(spec: QuerySpec, applyNewState: () => void): void {
     this.#applied = spec;
     const retired = tryCatch(() => this.#teardown());
-    this.#session = candidate.session;
-    candidate.install(bridgeAllowed);
+    applyNewState();
     if (retired.error) {
       throw retired.error;
     }
@@ -210,10 +214,10 @@ export class QueryViewController {
   }
 
   /** Single write path: observers only ever see a consistent triple. */
-  #write(data: unknown, resultType: ResultType, error?: ErroredQuery): void {
+  #write(data: unknown, status: QueryStatus, error?: ErroredQuery): void {
     this.#data.set(data);
-    this.#status.set(resultType);
-    this.#error.set(resultType === 'error' ? error : undefined);
+    this.#status.set(status);
+    this.#error.set(status === 'error' ? error : undefined);
   }
 
   /** `untracked` so it is callable from templates and effects without deps. */
