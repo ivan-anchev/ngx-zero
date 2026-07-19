@@ -40,6 +40,13 @@ interface ViewSession {
   unsubscribe: () => void;
 }
 
+/** One listener emission, captured verbatim. */
+interface Snapshot {
+  data: unknown;
+  resultType: ResultType;
+  error?: ErroredQuery;
+}
+
 export class QueryViewController {
   readonly #data = signal<unknown>(undefined);
   readonly #status = signal<QueryStatus>('disabled');
@@ -154,18 +161,11 @@ export class QueryViewController {
     session: ViewSession;
     install: (bridgeAllowed: boolean) => void;
   } {
-    // spec.query is already context-resolved, so Zero's public materialize
-    // signature accepts it as-is; the annotation pins the erased row type.
-    const view: TypedView<unknown> = spec.zero.materialize(
-      spec.query,
-      this.#ttl === undefined ? undefined : { ttl: this.#ttl },
-    );
-
+    const view = this.#materializeView(spec);
     const session: ViewSession = { alive: true, view, unsubscribe: noop };
+
     let installed = false;
-    let captured:
-      | { data: unknown; resultType: ResultType; error?: ErroredQuery }
-      | undefined;
+    let captured: Snapshot | undefined;
 
     const listener = (
       data: unknown,
@@ -194,23 +194,41 @@ export class QueryViewController {
 
     const install = (bridgeAllowed: boolean): void => {
       installed = true;
-      if (!captured) {
-        return;
+      if (captured) {
+        const snapshot = captured;
+        captured = undefined;
+        this.#applyInitialSnapshot(snapshot, bridgeAllowed);
       }
-      const { data, resultType, error } = captured;
-      captured = undefined;
-      // The bridge is skipping this initial overwrite: only when the new
-      // view would otherwise flash empty at 'unknown'. Data keeps the
-      // previous key's rows; status honestly belongs to the new view.
-      if (bridgeAllowed && resultType === 'unknown' && isEmptyResult(data)) {
-        this.#status.set('unknown');
-        this.#error.set(undefined);
-        return;
-      }
-      this.#write(data, resultType, error);
     };
 
     return { session, install };
+  }
+
+  #materializeView(spec: EnabledQuerySpec): TypedView<unknown> {
+    // spec.query is already context-resolved, so Zero's public materialize
+    // signature accepts it as-is; the return type pins the erased row type.
+    return spec.zero.materialize(
+      spec.query,
+      this.#ttl === undefined ? undefined : { ttl: this.#ttl },
+    );
+  }
+
+  /**
+   * The keepPreviousData bridge is precisely the skip of this one initial
+   * overwrite — only when the new view would otherwise flash empty at
+   * 'unknown'. Data keeps the previous key's rows; status honestly belongs
+   * to the new view.
+   */
+  #applyInitialSnapshot(
+    { data, resultType, error }: Snapshot,
+    bridgeAllowed: boolean,
+  ): void {
+    if (bridgeAllowed && resultType === 'unknown' && isEmptyResult(data)) {
+      this.#status.set('unknown');
+      this.#error.set(undefined);
+      return;
+    }
+    this.#write(data, resultType, error);
   }
 
   /** Single write path: observers only ever see a consistent triple. */
