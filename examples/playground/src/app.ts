@@ -79,7 +79,6 @@ export class App {
 
   readonly issuesQuery = injectQuery(
     () => (this.mineOnly() ? queries.issue.mine() : queries.issue.all()),
-    { keepPreviousData: true },
   );
 
   #loginGeneration = 0;
