@@ -6,10 +6,5 @@ export { provideZeroTesting, type ZeroTestingOptions } from './provide-zero-test
 export { withBootstrap } from './with-bootstrap.js';
 export type { ZeroFeature, ZeroFeatureKind } from './features.js';
 export type { InjectQueryOptions, QueryRef, QueryStatus } from './query-ref.js';
-export type {
-  InjectMutatorOptions,
-  MutatorArgs,
-  MutatorError,
-  MutatorRef,
-} from './mutator-ref.js';
+export type { InjectMutatorOptions, MutatorError, MutatorRef } from './mutator-ref.js';
 export type { Falsy } from '@rocicorp/zero';
