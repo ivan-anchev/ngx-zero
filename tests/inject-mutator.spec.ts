@@ -123,7 +123,8 @@ function controlledZero(expectedCalls: number): ControlledZero {
   return { zero, call, requests };
 }
 
-const serverRejection = {
+/** Resolved server error details — a rejected mutation, not a rejected promise. */
+const serverError = {
   type: 'error',
   error: { type: 'app', message: 'server said no', details: undefined },
 } as const satisfies MutatorResultDetails;
@@ -141,6 +142,14 @@ function setupRealZero(): void {
       provideZeroTesting({ schema, mutators, logSink: { log: () => {} } }),
     ],
   });
+}
+
+function setupControlledZero(expectedCalls: number): ControlledZero {
+  const controlled = controlledZero(expectedCalls);
+  TestBed.configureTestingModule({
+    providers: [provideTestChangeDetection(), provideZero({ zero: controlled.zero })],
+  });
+  return controlled;
 }
 
 describe('injectMutator', () => {
@@ -280,10 +289,7 @@ describe('injectMutator', () => {
   });
 
   it('normalizes rejected mutation promises into Zero error details', async () => {
-    const controlled = controlledZero(1);
-    TestBed.configureTestingModule({
-      providers: [provideTestChangeDetection(), provideZero({ zero: controlled.zero })],
-    });
+    const controlled = setupControlledZero(1);
     const fixture = TestBed.createComponent(MutatorHost);
     const ref = fixture.componentInstance.createIssue;
 
@@ -312,10 +318,7 @@ describe('injectMutator', () => {
   });
 
   it('projects a client success followed by a server rollback in order', async () => {
-    const controlled = controlledZero(1);
-    TestBed.configureTestingModule({
-      providers: [provideTestChangeDetection(), provideZero({ zero: controlled.zero })],
-    });
+    const controlled = setupControlledZero(1);
     const fixture = TestBed.createComponent(MutatorHost);
     const ref = fixture.componentInstance.createIssue;
 
@@ -329,18 +332,15 @@ describe('injectMutator', () => {
     expect(ref.serverResult()).toBeUndefined();
     expect(ref.error()).toBeUndefined();
 
-    controlled.call(0).server.resolve(serverRejection);
-    await expect(result.server).resolves.toEqual(serverRejection);
+    controlled.call(0).server.resolve(serverError);
+    await expect(result.server).resolves.toEqual(serverError);
     expect(ref.pending()).toBe(false);
-    expect(ref.serverResult()).toEqual(serverRejection);
-    expect(ref.error()).toEqual(serverRejection.error);
+    expect(ref.serverResult()).toEqual(serverError);
+    expect(ref.error()).toEqual(serverError.error);
   });
 
   it('keeps signals on the latest call while a superseded call settles late', async () => {
-    const controlled = controlledZero(2);
-    TestBed.configureTestingModule({
-      providers: [provideTestChangeDetection(), provideZero({ zero: controlled.zero })],
-    });
+    const controlled = setupControlledZero(2);
     const fixture = TestBed.createComponent(MutatorHost);
     const ref = fixture.componentInstance.createIssue;
 
@@ -348,9 +348,9 @@ describe('injectMutator', () => {
     const second = ref.mutate({ id: 'i2', title: 'second' });
 
     controlled.call(0).client.resolve({ type: 'success' });
-    controlled.call(0).server.resolve(serverRejection);
+    controlled.call(0).server.resolve(serverError);
     await expect(first.client).resolves.toEqual({ type: 'success' });
-    await expect(first.server).resolves.toEqual(serverRejection);
+    await expect(first.server).resolves.toEqual(serverError);
 
     expect(ref.clientPending()).toBe(true);
     expect(ref.pending()).toBe(true);
@@ -402,10 +402,7 @@ describe('injectMutator', () => {
   });
 
   it('freezes signals after host destroy while awaited results still resolve', async () => {
-    const controlled = controlledZero(2);
-    TestBed.configureTestingModule({
-      providers: [provideTestChangeDetection(), provideZero({ zero: controlled.zero })],
-    });
+    const controlled = setupControlledZero(2);
     const fixture = TestBed.createComponent(MutatorHost);
     const ref = fixture.componentInstance.createIssue;
 
@@ -413,9 +410,9 @@ describe('injectMutator', () => {
     fixture.destroy();
 
     controlled.call(0).client.resolve({ type: 'success' });
-    controlled.call(0).server.resolve(serverRejection);
+    controlled.call(0).server.resolve(serverError);
     await expect(result.client).resolves.toEqual({ type: 'success' });
-    await expect(result.server).resolves.toEqual(serverRejection);
+    await expect(result.server).resolves.toEqual(serverError);
 
     expect(ref.clientPending()).toBe(true);
     expect(ref.pending()).toBe(true);
@@ -435,10 +432,7 @@ describe('injectMutator', () => {
   });
 
   it('re-renders a host template from mutation lifecycle signal writes', async () => {
-    const controlled = controlledZero(1);
-    TestBed.configureTestingModule({
-      providers: [provideTestChangeDetection(), provideZero({ zero: controlled.zero })],
-    });
+    const controlled = setupControlledZero(1);
     const fixture = TestBed.createComponent(TemplateHost);
     fixture.autoDetectChanges();
     await fixture.whenStable();
@@ -451,7 +445,7 @@ describe('injectMutator', () => {
     expect(text()).toBe('pending:none');
 
     controlled.call(0).client.resolve({ type: 'success' });
-    controlled.call(0).server.resolve(serverRejection);
+    controlled.call(0).server.resolve(serverError);
     await vi.waitFor(() => expect(text()).toBe('idle:server said no'));
   });
 
