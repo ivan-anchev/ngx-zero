@@ -6,10 +6,7 @@ import {
 } from '@rocicorp/zero/bindings';
 import { ngxZeroError } from './errors.js';
 
-/**
- * Widest runtime shape a query thunk may produce, derived from Zero's own
- * canonical types. The injectQuery overloads own the precise public typing.
- */
+/** Widest thunk result; the injectQuery overloads own the precise typing. */
 export type AnyQueryOrRequest = AnyQuery | ReturnType<AnyCustomQuery>;
 
 export type QueryKey = string;
@@ -21,14 +18,10 @@ export interface ResolvedQuery {
 }
 
 /**
- * Single resolution point: a registry QueryRequest is turned into a Query
- * with the instance's current context via `addContextToQuery` — exactly what
- * `zero.materialize` does internally — so Zero's validators, context, and
- * AST semantics define identity. The key is the resolved query's canonical
- * client hash plus its serialized result format: `hash()` alone is not
- * enough because `.one()` and `.limit(1)` share an AST hash while returning
- * different shapes. The format is a fixed internal shape (never user args),
- * so plain JSON.stringify is deterministic.
+ * Resolves like `zero.materialize` does internally, so Zero's validators,
+ * context, and AST semantics define identity. The key includes the result
+ * format because `.one()` and `.limit(1)` share an AST hash while returning
+ * different shapes.
  */
 export function resolveQuery(
   zero: Zero,
@@ -37,7 +30,7 @@ export function resolveQuery(
   const query = addContextToQuery(value, zero.context);
 
   // An uncalled registry query (`queries.issue.mine` without `()`) passes
-  // through resolution untouched and carries no query internals.
+  // through resolution untouched.
   if (!(queryInternalsTag in (query as object))) {
     throw ngxZeroError(
       'injectQuery() thunk must return a Query or a QueryRequest ' +

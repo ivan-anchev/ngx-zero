@@ -100,10 +100,8 @@ export function injectQuery(
 
   // One computed reads both change sources (instance signal + thunk signals),
   // so "either changes -> re-materialize exactly once" falls out of signal
-  // coalescing. The custom `equal` compares semantic identity: a key-equal
-  // thunk re-run keeps the old reference and downstream never re-fires. A
-  // throwing thunk throws here — the controller is never entered and any
-  // previous view stays intact.
+  // coalescing. A key-equal thunk re-run keeps the old reference via `equal`,
+  // and a throwing thunk throws here — the controller is never entered.
   const spec = computed<QuerySpec>(
     () => {
       const zero = manager.zeroOrThrow();
@@ -111,9 +109,6 @@ export function injectQuery(
       if (!result) {
         return { zero, key: DISABLED, query: undefined };
       }
-      // Resolution builds and hashes the AST on every thunk run — the same
-      // per-render cost Zero's own React binding pays. Key-equal reruns are
-      // deduped by `equal` below.
       return { zero, ...resolveQuery(zero, result) };
     },
     { equal: (a, b) => a.zero === b.zero && a.key === b.key },
@@ -124,8 +119,6 @@ export function injectQuery(
     ttl: options.ttl,
   });
 
-  // Cleanup is registered before the eager materialization: if it throws,
-  // construction fails with nothing live to leak.
   injector.get(DestroyRef).onDestroy(() => controller.destroy());
 
   // Eager synchronous materialization: the first change-detection pass

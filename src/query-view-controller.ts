@@ -14,9 +14,8 @@ import { tryCatch } from './utils.js';
 export const DISABLED: unique symbol = Symbol('ngx-zero/disabled');
 
 /**
- * Produced by the spec computed in inject-query.ts. That computed's custom
- * `equal` on `(zero, key)` hands `reconcile()` a new reference exactly when
- * the semantic identity changed — so reference comparison IS the fast path.
+ * The spec computed in inject-query.ts dedupes on `(zero, key)`, so a new
+ * reference means the identity changed — reference equality is the fast path.
  */
 export type QuerySpec = EnabledQuerySpec | DisabledQuerySpec;
 
@@ -40,7 +39,6 @@ interface ViewSession {
   unsubscribe: () => void;
 }
 
-/** One listener emission, captured verbatim. */
 interface Snapshot {
   data: unknown;
   resultType: ResultType;
@@ -72,15 +70,10 @@ export class QueryViewController {
   }
 
   /**
-   * Called eagerly at injectQuery() time, from the tracking effect on every
-   * identity change, and from retry() with force. A throwing thunk throws in
-   * the spec computed before this runs, so a live view is never torn down
-   * for an error. The candidate session is built (materialize + subscribe)
-   * BEFORE any live state is touched: if either throws, `#applied` does not
-   * advance and the prior session stays fully live — still subscribed, still
-   * updating the signals — so the next identity change or retry() reconciles
-   * normally. Two live views on the same query may briefly coexist during the
-   * build; Zero dedupes the IVM pipeline by query hash.
+   * The candidate is built before any live state is touched: on a throw,
+   * `#applied` does not advance and the prior session stays fully live. Two
+   * views on the same query may briefly coexist; Zero dedupes the IVM
+   * pipeline by query hash.
    */
   reconcile(spec: QuerySpec, options: { force?: boolean } = {}): void {
     if (this.#destroyed) {
@@ -106,8 +99,6 @@ export class QueryViewController {
       previous.key !== DISABLED &&
       previous.zero === spec.zero;
 
-    // All failure-prone work (materialize + subscribe) happens here, before
-    // the commit below.
     const candidate = this.#buildCandidate(spec);
     this.#commit(spec, () => {
       this.#session = candidate.session;
@@ -116,10 +107,9 @@ export class QueryViewController {
   }
 
   /**
-   * Atomically applies a spec: advances `#applied`, retires the old session,
-   * and applies the new state even if retirement throws (unsubscribe
-   * failure) — the applied spec, installed session, and signals must never
-   * diverge. The retirement error surfaces only after the commit completes.
+   * The new state is applied even if retiring the old session throws — the
+   * applied spec, installed session, and signals must never diverge. The
+   * retirement error surfaces only after the commit completes.
    */
   #commit(spec: QuerySpec, applyNewState: () => void): void {
     this.#applied = spec;
@@ -130,11 +120,7 @@ export class QueryViewController {
     }
   }
 
-  /**
-   * Never touches the public signals: enabled->enabled applies the candidate's
-   * captured snapshot right after this in the same reconcile step, and
-   * enabled->disabled resets explicitly in reconcile().
-   */
+  /** Never touches the public signals; the caller commits the new state. */
   #teardown(): void {
     const session = this.#session;
     if (!session) {
@@ -144,18 +130,16 @@ export class QueryViewController {
     this.#session = undefined;
     session.alive = false; // stale-write guard first, then detach
     const unsubscribed = tryCatch(() => session.unsubscribe());
-    session.view.destroy(); // release the IVM view even if unsubscribe threw
+    session.view.destroy();
     if (unsubscribed.error) {
       throw unsubscribed.error;
     }
   }
 
   /**
-   * Materializes and subscribes a candidate session without touching any live
-   * state. addListener fires synchronously with the current (data, resultType,
-   * error) — verified in zero@1.8.0 — but the old session is still live here,
-   * so that emission is captured instead of written; `install()` applies it
-   * during the atomic swap. After install, emissions write directly.
+   * addListener fires synchronously with the current snapshot (verified in
+   * zero@1.8.0). The old session is still live here, so that emission is
+   * captured and applied by `install()` at commit time.
    */
   #buildCandidate(spec: EnabledQuerySpec): {
     session: ViewSession;
@@ -184,8 +168,7 @@ export class QueryViewController {
 
     const subscribed = tryCatch(() => view.addListener(listener));
     if (subscribed.error) {
-      // Failed candidates leave nothing behind: release the view and let the
-      // error propagate with the prior session untouched.
+      // Failed candidates leave nothing behind.
       session.alive = false;
       view.destroy();
       throw subscribed.error;
@@ -205,8 +188,6 @@ export class QueryViewController {
   }
 
   #materializeView(spec: EnabledQuerySpec): TypedView<unknown> {
-    // spec.query is already context-resolved, so Zero's public materialize
-    // signature accepts it as-is; the return type pins the erased row type.
     return spec.zero.materialize(
       spec.query,
       this.#ttl === undefined ? undefined : { ttl: this.#ttl },
@@ -214,10 +195,9 @@ export class QueryViewController {
   }
 
   /**
-   * The keepPreviousData bridge is precisely the skip of this one initial
-   * overwrite — only when the new view would otherwise flash empty at
-   * 'unknown'. Data keeps the previous key's rows; status honestly belongs
-   * to the new view.
+   * The keepPreviousData bridge is the skip of this one initial overwrite,
+   * only when the new view would otherwise flash empty at 'unknown'. Data
+   * keeps the previous key's rows; status belongs to the new view.
    */
   #applyInitialSnapshot(
     { data, resultType, error }: Snapshot,
@@ -263,8 +243,7 @@ export class QueryViewController {
     }
     this.#destroyed = true;
     this.#teardown();
-    // Signals stay as-is: the host is gone, resetting would only trigger a
-    // pointless change-detection notification during teardown.
+    // Signals stay as-is: the host is gone.
   }
 }
 
