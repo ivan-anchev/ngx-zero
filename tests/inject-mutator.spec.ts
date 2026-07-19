@@ -95,7 +95,7 @@ interface ControlledCall {
 
 interface ControlledZero {
   readonly zero: Zero;
-  readonly calls: readonly ControlledCall[];
+  readonly call: (index: number) => ControlledCall;
   readonly requests: unknown[];
 }
 
@@ -105,18 +105,22 @@ function controlledZero(expectedCalls: number): ControlledZero {
     client: deferred<MutatorResultDetails>(),
     server: deferred<MutatorResultDetails>(),
   }));
+  const call = (index: number): ControlledCall => {
+    const found = calls[index];
+    if (found === undefined) {
+      throw new Error(`controlledZero: no call prepared at index ${index}`);
+    }
+    return found;
+  };
   const requests: unknown[] = [];
   const zero = {
     mutate: (request: unknown) => {
-      const call = calls[requests.length];
-      if (call === undefined) {
-        throw new Error('controlledZero: unexpected extra mutate() call');
-      }
+      const current = call(requests.length);
       requests.push(request);
-      return { client: call.client.promise, server: call.server.promise };
+      return { client: current.client.promise, server: current.server.promise };
     },
   } as unknown as Zero;
-  return { zero, calls, requests };
+  return { zero, call, requests };
 }
 
 const serverRejection = {
@@ -291,8 +295,8 @@ describe('injectMutator', () => {
     expect(request.mutator.mutatorName).toBe('issue.create');
     expect(request.args).toEqual({ id: 'i1', title: 'hello' });
 
-    controlled.calls[0].client.reject(new Error('client offline'));
-    controlled.calls[0].server.reject('server offline');
+    controlled.call(0).client.reject(new Error('client offline'));
+    controlled.call(0).server.reject('server offline');
 
     await expect(result.client).resolves.toEqual({
       type: 'error',
@@ -317,7 +321,7 @@ describe('injectMutator', () => {
 
     const result = ref.mutate({ id: 'i1', title: 'rollback' });
 
-    controlled.calls[0].client.resolve({ type: 'success' });
+    controlled.call(0).client.resolve({ type: 'success' });
     await expect(result.client).resolves.toEqual({ type: 'success' });
     expect(ref.clientPending()).toBe(false);
     expect(ref.clientResult()).toEqual({ type: 'success' });
@@ -325,7 +329,7 @@ describe('injectMutator', () => {
     expect(ref.serverResult()).toBeUndefined();
     expect(ref.error()).toBeUndefined();
 
-    controlled.calls[0].server.resolve(serverRejection);
+    controlled.call(0).server.resolve(serverRejection);
     await expect(result.server).resolves.toEqual(serverRejection);
     expect(ref.pending()).toBe(false);
     expect(ref.serverResult()).toEqual(serverRejection);
@@ -343,8 +347,8 @@ describe('injectMutator', () => {
     const first = ref.mutate({ id: 'i1', title: 'first' });
     const second = ref.mutate({ id: 'i2', title: 'second' });
 
-    controlled.calls[0].client.resolve({ type: 'success' });
-    controlled.calls[0].server.resolve(serverRejection);
+    controlled.call(0).client.resolve({ type: 'success' });
+    controlled.call(0).server.resolve(serverRejection);
     await expect(first.client).resolves.toEqual({ type: 'success' });
     await expect(first.server).resolves.toEqual(serverRejection);
 
@@ -354,7 +358,7 @@ describe('injectMutator', () => {
     expect(ref.serverResult()).toBeUndefined();
     expect(ref.error()).toBeUndefined();
 
-    controlled.calls[1].client.resolve({ type: 'success' });
+    controlled.call(1).client.resolve({ type: 'success' });
     await expect(second.client).resolves.toEqual({ type: 'success' });
     expect(ref.clientPending()).toBe(false);
     expect(ref.clientResult()).toEqual({ type: 'success' });
@@ -382,7 +386,7 @@ describe('injectMutator', () => {
     current.set(second.zero);
     await fixture.whenStable();
 
-    first.calls[0].client.resolve({ type: 'success' });
+    first.call(0).client.resolve({ type: 'success' });
     await expect(inFlight.client).resolves.toEqual({ type: 'success' });
     expect(ref.clientResult()).toEqual({ type: 'success' });
 
@@ -392,7 +396,7 @@ describe('injectMutator', () => {
     expect(ref.clientPending()).toBe(true);
     expect(ref.clientResult()).toBeUndefined();
 
-    second.calls[0].client.resolve({ type: 'success' });
+    second.call(0).client.resolve({ type: 'success' });
     await expect(next.client).resolves.toEqual({ type: 'success' });
     expect(ref.clientResult()).toEqual({ type: 'success' });
   });
@@ -408,8 +412,8 @@ describe('injectMutator', () => {
     const result = ref.mutate({ id: 'i1', title: 'in flight' });
     fixture.destroy();
 
-    controlled.calls[0].client.resolve({ type: 'success' });
-    controlled.calls[0].server.resolve(serverRejection);
+    controlled.call(0).client.resolve({ type: 'success' });
+    controlled.call(0).server.resolve(serverRejection);
     await expect(result.client).resolves.toEqual({ type: 'success' });
     await expect(result.server).resolves.toEqual(serverRejection);
 
@@ -421,7 +425,7 @@ describe('injectMutator', () => {
 
     const late = ref.mutate({ id: 'i2', title: 'after destroy' });
     expect(controlled.requests).toHaveLength(2);
-    controlled.calls[1].client.reject(new Error('late failure'));
+    controlled.call(1).client.reject(new Error('late failure'));
     await expect(late.client).resolves.toEqual({
       type: 'error',
       error: { type: 'zero', message: 'late failure' },
@@ -446,8 +450,8 @@ describe('injectMutator', () => {
     await fixture.whenStable();
     expect(text()).toBe('pending:none');
 
-    controlled.calls[0].client.resolve({ type: 'success' });
-    controlled.calls[0].server.resolve(serverRejection);
+    controlled.call(0).client.resolve({ type: 'success' });
+    controlled.call(0).server.resolve(serverRejection);
     await vi.waitFor(() => expect(text()).toBe('idle:server said no'));
   });
 
@@ -465,8 +469,8 @@ describe('injectMutator', () => {
       const fixture = TestBed.createComponent(MutatorHost);
 
       fixture.componentInstance.createIssue.mutate({ id: 'i1', title: 'ignored' });
-      controlled.calls[0].client.reject(new Error('client leak'));
-      controlled.calls[0].server.reject(new Error('server leak'));
+      controlled.call(0).client.reject(new Error('client leak'));
+      controlled.call(0).server.reject(new Error('server leak'));
       await new Promise(resolve => setTimeout(resolve, 10));
 
       expect(leaks).toEqual([]);
