@@ -2,11 +2,10 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
-  effect,
   signal,
 } from '@angular/core';
 import type { MutateRequest, ReadonlyJSONValue } from '@rocicorp/zero';
-import { injectZero } from 'ngx-zero';
+import { injectQuery, injectZero } from 'ngx-zero';
 import {
   IssueBoardComponent,
   type IssueCompletionChange,
@@ -34,7 +33,7 @@ import type { Issue } from './zero/schema.gen';
       <playground-header
         [userID]="session()?.userID"
         [instanceCreations]="instanceCreations()"
-        [queryState]="queryState()"
+        [queryState]="issuesQuery.status()"
         [authPending]="authAction() !== undefined"
       />
 
@@ -52,9 +51,9 @@ import type { Issue } from './zero/schema.gen';
       />
 
       <issue-board
-        [issues]="issues()"
+        [issues]="issuesQuery.data()"
         [mineOnly]="mineOnly()"
-        [loading]="queryState() === 'loading'"
+        [loading]="issuesQuery.status() === 'unknown'"
         [lastAction]="lastAction()"
         [lastError]="lastError()"
         (completionChanged)="setCompleted($event)"
@@ -69,8 +68,6 @@ export class App {
   readonly session = session;
   readonly instanceCreations = instanceCreations;
 
-  readonly issues = signal<readonly Issue[]>([]);
-  readonly queryState = signal('loading');
   readonly mineOnly = signal(false);
   readonly lastAction = signal('');
   readonly lastError = signal('');
@@ -80,27 +77,12 @@ export class App {
     session()?.userID === 'user1' ? 'user2' : 'user1',
   );
 
+  readonly issuesQuery = injectQuery(
+    () => (this.mineOnly() ? queries.issue.mine() : queries.issue.all()),
+    { keepPreviousData: true },
+  );
+
   #loginGeneration = 0;
-
-  constructor() {
-    effect(onCleanup => {
-      const zero = this.zero();
-      const request = this.mineOnly() ? queries.issue.mine() : queries.issue.all();
-      const view = zero.materialize(request);
-
-      this.queryState.set('loading');
-      this.issues.set(view.data);
-      const unsubscribe = view.addListener((data, resultType) => {
-        this.issues.set(data);
-        this.queryState.set(resultType);
-      });
-
-      onCleanup(() => {
-        unsubscribe();
-        view.destroy();
-      });
-    });
-  }
 
   addIssue(title: string): void {
     void this.runMutation(
@@ -158,10 +140,6 @@ export class App {
         return;
       }
 
-      if (userChanged) {
-        this.issues.set([]);
-        this.queryState.set('loading');
-      }
       this.sessionStatus.set(
         userChanged
           ? `Switched to ${userID}`
