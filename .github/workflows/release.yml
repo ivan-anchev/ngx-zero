@@ -34,11 +34,7 @@ jobs:
       - run: npm pack
       - run: pnpm exec publint run ngx-zero-*.tgz
       - run: pnpm exec attw ngx-zero-*.tgz --profile esm-only
-      # npm (not pnpm) for provenance support. NPM_TOKEN bootstraps the first
-      # publish; once the package exists, configure Trusted Publishing on
-      # npmjs.com for this repo+workflow, delete the secret, drop the env
-      # block below, and add `npm install -g npm@latest` (OIDC needs npm 11.5+,
-      # node 22 bundles 10.x).
+      # Trusted Publishing (OIDC) — no token; npm authenticates via the
+      # workflow identity. Needs npm 11.5+, node 22 bundles 10.x.
+      - run: npm install -g npm@latest
       - run: npm publish ngx-zero-*.tgz
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
