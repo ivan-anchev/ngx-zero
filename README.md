@@ -54,7 +54,7 @@ Fire-and-forget from the template, driving UI state off the signals:
 }
 ```
 
-Or await the outcome — the returned promises never reject:
+Or await the outcome - the returned promises never reject:
 
 ```ts
 async addIssue(title: string) {
@@ -125,10 +125,34 @@ Returned promises never reject; errors land in the `error` signal.
 ```ts
 readonly close = injectMutator(mutators.issue.close);
 
-// clientPending() — optimistic apply in flight
-// pending()       — server confirmation in flight
-// clientResult() / serverResult() — outcome details
-// error()         — client error, else server error (rollback)
+close.clientPending() // optimistic apply in flight
+close.pending() // server confirmation in flight
+close.clientResult() / close.serverResult() // outcome details
+close.error() // client error, else server error (rollback)
+```
+
+### `injectConnectionState()`
+
+The current instance's connection state as a signal — seeded synchronously and
+following instance replacement. `'needs-auth'` is the cue to refresh auth: when
+the refreshed token lands in `provideZero`'s thunk, Zero reconnects in place.
+
+```ts
+readonly connection = injectConnectionState();
+
+constructor() {
+  effect(() => {
+    if (this.connection().name === 'needs-auth') {
+      void this.auth.refreshSession();
+    }
+  });
+}
+```
+
+```html
+@if (connection().name !== 'connected') {
+  <span class="badge">offline</span>
+}
 ```
 
 ### `injectZero()`
