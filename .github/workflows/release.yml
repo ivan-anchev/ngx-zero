@@ -1,0 +1,36 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+  id-token: write # npm provenance
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+      - run: pnpm install --frozen-lockfile
+      # A tag is a claim about package.json — refuse to publish a mismatch.
+      - run: test "v$(node -p "require('./package.json').version")" = "$GITHUB_REF_NAME"
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm check:package
+      # npm (not pnpm) for provenance support. NPM_TOKEN bootstraps the first
+      # publish; once the package exists, configure Trusted Publishing on
+      # npmjs.com for this repo+workflow, delete the secret, drop the env
+      # block below, and add `npm install -g npm@latest` (OIDC needs npm 11.5+,
+      # node 22 bundles 10.x).
+      - run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
