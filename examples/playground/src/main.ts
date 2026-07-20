@@ -3,9 +3,9 @@ import { bootstrapApplication } from '@angular/platform-browser';
 import { provideZero, withBootstrap } from 'ngx-zero';
 import { App } from './app';
 import { contextFor, initializeInstance, login, session } from './playground-state';
+import './styles.css';
 import { mutators } from './zero/mutators';
 import { schema } from './zero/schema.gen';
-import './styles.css';
 
 await login('user1');
 
