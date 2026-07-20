@@ -7,8 +7,8 @@ Signals-first, zoneless-ready Angular bindings for Rocicorp Zero.
 - `docs/DESIGN.md` is the source of truth for the public API and its rationale.
   Change it in the same PR as any API change.
 - Single-inject principle: users touch exactly one of `injectZero` / `injectQuery` /
-  `injectMutator` per use-site. Never design an API that requires injecting the
-  instance and passing it to another inject.
+  `injectMutator` / `injectConnectionState` per use-site. Never design an API that
+  requires injecting the instance and passing it to another inject.
 - Only modern Zero (≥1.x) APIs: `zero.materialize(queryOrRequest, opts)`,
   `QueryOrQueryRequest`, `defineQueries`/`defineMutators` registries,
   `zero.connection`. Never `zero.query.*`, `query.materialize()`, or other
