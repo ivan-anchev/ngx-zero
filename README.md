@@ -131,6 +131,30 @@ readonly close = injectMutator(mutators.issue.close);
 // error()         — client error, else server error (rollback)
 ```
 
+### `injectConnectionState()`
+
+The current instance's connection state as a signal — seeded synchronously and
+following instance replacement. `'needs-auth'` is the cue to refresh auth: when
+the refreshed token lands in `provideZero`'s thunk, Zero reconnects in place.
+
+```ts
+readonly connection = injectConnectionState();
+
+constructor() {
+  effect(() => {
+    if (this.connection().name === 'needs-auth') {
+      void this.auth.refreshSession();
+    }
+  });
+}
+```
+
+```html
+@if (connection().name !== 'connected') {
+  <span class="badge">offline</span>
+}
+```
+
 ### `injectZero()`
 
 Escape hatch: the raw `Zero` instance as a signal, for anything not covered
