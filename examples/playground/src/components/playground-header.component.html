@@ -24,6 +24,13 @@
         <dt>Query</dt>
         <dd>{{ queryState() }}</dd>
       </div>
+      <div>
+        <dt>Mutation</dt>
+        <dd class="status">
+          <i aria-hidden="true" [class.pending]="mutationPending()"></i>
+          {{ mutationPending() ? 'pending' : 'idle' }}
+        </dd>
+      </div>
     </dl>
   </aside>
 </header>

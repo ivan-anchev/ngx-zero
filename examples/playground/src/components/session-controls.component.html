@@ -9,21 +9,21 @@
     <button
       type="button"
       [disabled]="authAction() !== undefined"
-      (click)="userSwitched.emit()"
+      (click)="switchUser()"
     >
       Switch to {{ otherUser() }}
     </button>
     <button
       type="button"
       [disabled]="authAction() !== undefined"
-      (click)="authRotated.emit()"
+      (click)="rotateAuth()"
     >
       Rotate auth
     </button>
     <button
       type="button"
       [disabled]="authAction() !== undefined"
-      (click)="shortTokenRequested.emit()"
+      (click)="rotateAuth(15)"
     >
       Use 15s token
     </button>

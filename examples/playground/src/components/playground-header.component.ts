@@ -11,5 +11,5 @@ export class PlaygroundHeaderComponent {
   readonly userID = input.required<string | undefined>();
   readonly instanceCreations = input.required<number>();
   readonly queryState = input.required<string>();
-  readonly authPending = input.required<boolean>();
+  readonly mutationPending = input.required<boolean>();
 }

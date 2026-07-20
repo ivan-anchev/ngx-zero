@@ -41,9 +41,11 @@ Open http://localhost:5173.
 ## What to try
 
 - **Add / complete / delete issues** — optimistic mutations synced through the
-  real backend. Open two windows to watch them converge.
+  real backend. Open two windows to watch them converge. The header's
+  “Mutation” readout is driven by the `pending` signals on `injectMutator`.
 - **Add a title containing “rollback”** — a server-only rule rejects it after
-  the optimistic apply succeeds; watch the row appear and roll back.
+  the optimistic apply succeeds; watch the row appear and roll back, and the
+  mutator's `error` signal surface the rejection.
 - **Delete someone else's issue** — the owner check fails during the
   optimistic apply, before the server is ever involved.
 - **Switch user** — `userID` (and context) change, so `provideZero` closes and
