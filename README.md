@@ -1,8 +1,6 @@
 # ngx-zero
 
-> Signals-first, zoneless-ready Angular bindings for [Rocicorp Zero](https://zero.rocicorp.dev).
-
-Rationale and full API contract live in [docs/DESIGN.md](docs/DESIGN.md).
+Signals-first, zoneless-ready Angular bindings for [Rocicorp Zero](https://zero.rocicorp.dev).
 
 ## Quick look
 
