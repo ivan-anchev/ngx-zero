@@ -14,36 +14,11 @@ concurrency:
 
 jobs:
   test:
-    # floor: exactly the lockfile — @angular/core@20, zone.js@0.15, TS 5.9.
-    # Dev deps are pinned to the floor by design (docs/DESIGN.md); this leg
-    # guarantees the peer-range floor actually works.
-    # latest: newest Angular/zone.js/TypeScript, guarding the ceiling.
-    name: test (ng-${{ matrix.angular }})
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        angular: [floor, latest]
-    steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      # Lint before the @latest upgrade: it's a code-quality gate, not a
-      # compat check, and typescript-eslint doesn't track typescript@latest.
-      - run: pnpm lint
-      - if: matrix.angular == 'latest'
-        run: pnpm add -D @angular/compiler@latest @angular/core@latest @angular/platform-browser@latest zone.js@latest typescript@latest
-      - run: pnpm typecheck
-      - run: pnpm test
-      - run: pnpm build
-      - run: pnpm exec publint
+    uses: ./.github/workflows/test.yml
 
   # Stable aggregate context for branch protection: require "verify" only,
-  # regardless of how the matrix evolves.
+  # regardless of how the matrix evolves. Kept here (not in test.yml) so the
+  # check is named exactly "verify", not "<caller job> / verify".
   verify:
     name: verify
     needs: test
