@@ -17,10 +17,8 @@
     </div>
   </div>
 
-  @if (lastError()) {
-    <p class="notice error" role="alert">{{ lastError() }}</p>
-  } @else if (lastAction()) {
-    <p class="notice" role="status">{{ lastAction() }}</p>
+  @if (error()) {
+    <p class="notice error" role="alert">{{ error() }}</p>
   }
 
   <ul class="issue-list">

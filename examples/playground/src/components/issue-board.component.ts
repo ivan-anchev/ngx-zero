@@ -23,8 +23,7 @@ export class IssueBoardComponent {
   readonly issues = input.required<readonly Issue[]>();
   readonly mineOnly = input.required<boolean>();
   readonly loading = input.required<boolean>();
-  readonly lastAction = input.required<string>();
-  readonly lastError = input.required<string>();
+  readonly error = input<string>();
 
   readonly completionChanged = output<IssueCompletionChange>();
   readonly issueRemoved = output<Issue>();
