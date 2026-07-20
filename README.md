@@ -2,10 +2,11 @@
 
 > Signals-first, zoneless-ready Angular bindings for [Rocicorp Zero](https://zero.rocicorp.dev).
 
-**Status: core API implemented, not yet published to npm.** Rationale and full API
-contract live in [docs/DESIGN.md](docs/DESIGN.md).
+Rationale and full API contract live in [docs/DESIGN.md](docs/DESIGN.md).
 
 ## Quick look
+
+### Provide
 
 ```ts
 // app.config.ts
@@ -15,26 +16,60 @@ provideZero(() => ({
   userID: auth.userId(),
   auth: auth.jwt(),
 }))
+```
 
+### Query
+
+```ts
 // component — one inject per use-site, fully inferred
 export class IssuesList {
   readonly issues = injectQuery(() => queries.issues.open({ assignee: this.userId() }));
-  readonly close = injectMutator(mutators.issue.close);
 }
 ```
 
 ```html
 @for (issue of issues.data(); track issue.id) {
-  <button (click)="close.mutate({ id: issue.id })" [disabled]="close.pending()">
-    Close
-  </button>
+  <app-issue [issue]="issue" />
+}
+```
+
+### Mutate
+
+```ts
+export class IssuesList {
+  readonly create = injectMutator(mutators.issue.create);
+  readonly close = injectMutator(mutators.issue.close);
+}
+```
+
+Fire-and-forget from the template, driving UI state off the signals:
+
+```html
+<button (click)="close.mutate({ id: issue.id })" [disabled]="close.pending()">
+  Close
+</button>
+
+@if (close.error(); as err) {
+  <p class="error">{{ err.message }}</p>
+}
+```
+
+Or await the outcome — the returned promises never reject:
+
+```ts
+async addIssue(title: string) {
+  const { client, server } = this.create.mutate({ id: crypto.randomUUID(), title });
+
+  await client;                  // optimistic apply settled
+  const result = await server;   // authoritative server outcome
+  if (result.type === 'error') {
+    // mutation was rejected and rolled back
+  }
 }
 ```
 
 ## Why
 
-- **Single inject.** `injectZero`, `injectQuery`, `injectMutator` — never
-  "inject the instance, then pass it somewhere".
 - **Signals end-to-end.** Zoneless-first, zone.js fully supported (no `NgZone.run`
   anywhere).
 - **Tight inference.** Zero generics at call sites via Zero's own `DefaultTypes`
