@@ -1,6 +1,6 @@
 {
   "name": "ngx-zero",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Signals-first, zoneless-ready Angular bindings for Rocicorp Zero",
   "license": "MIT",
   "author": "Ivan Anchev",
