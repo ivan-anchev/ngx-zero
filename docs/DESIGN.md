@@ -141,6 +141,20 @@ or cache interaction.
 - Known upstream limitation: mutators cannot return data on success.
 - `options: { injector?: Injector }` — standard CIF pattern.
 
+### `injectConnectionState(options?): Signal<ConnectionState>` — implemented
+
+- Subscribes `zero.connection.state`; `'needs-auth'` is the auth-refresh signal.
+- Seeds synchronously from `connection.state.current` at call time (Zero's
+  `subscribe` does not replay the current value), so the first CD pass reads the
+  real state. Emissions write the signal; nothing else does.
+- Follows instance replacement: an effect re-seeds from the new instance's
+  current state and re-subscribes; the old subscription is dropped. Between the
+  close and the effect flush the signal may truthfully read the old instance's
+  `'closed'`.
+- `DestroyRef` unsubscribes; the signal keeps its last value after destruction.
+- `options: { injector?: Injector }` — standard CIF pattern. Missing
+  `provideZero` throws setup guidance at inject time.
+
 ### `injectZero(options?): Signal<Zero>` — implemented
 
 - Returns the current instance as a signal so consumers follow instance replacement.
@@ -191,8 +205,7 @@ Lifecycle verdicts (diff of previous vs next factory output):
 
 ### Also v1
 
-- `injectConnectionState(): Signal<ConnectionState>` — subscribes
-  `zero.connection.state`; `'needs-auth'` is the auth-refresh signal.
+- `injectConnectionState` — implemented; see its section above.
 - Route-resolver/guard `preload` helper (`zeroPreload(queryThunk)`) — Angular-native,
   no other binding has it. Preload TTL default `'none'` per upstream guidance.
 - `provideZeroTesting` — implemented; see its section above.
