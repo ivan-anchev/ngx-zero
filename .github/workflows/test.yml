@@ -1,0 +1,36 @@
+name: Test
+
+# Canonical definition of "the package works" — called by ci.yml and
+# release.yml so the release gate can never drift from CI.
+on:
+  workflow_call:
+
+jobs:
+  test:
+    # floor: exactly the lockfile — @angular/core@20, zone.js@0.15, TS 5.9.
+    # Dev deps are pinned to the floor by design (docs/DESIGN.md); this leg
+    # guarantees the peer-range floor actually works.
+    # latest: newest Angular/zone.js/TypeScript, guarding the ceiling.
+    name: test (ng-${{ matrix.angular }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        angular: [floor, latest]
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Lint before the @latest upgrade: it's a code-quality gate, not a
+      # compat check, and typescript-eslint doesn't track typescript@latest.
+      - run: pnpm lint
+      - if: matrix.angular == 'latest'
+        run: pnpm add -D @angular/compiler@latest @angular/core@latest @angular/platform-browser@latest zone.js@latest typescript@latest
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      - run: pnpm exec publint

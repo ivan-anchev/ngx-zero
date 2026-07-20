@@ -8,7 +8,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- `provideZero` / `withBootstrap` — app-level provider wiring a Zero instance from a reactive config factory, with instance recreation on config change (e.g. token rotation)
+- `provideZero` / `withBootstrap` — app-level provider wiring a Zero instance from a reactive config factory; auth token rotation reconnects the existing instance in place, other config changes (e.g. `userID`) close and recreate it
 - `injectZero` — direct access to the current Zero instance
 - `injectQuery` — signal-based query binding (`data`, `status`, result details)
 - `injectMutator` — signal-based mutator binding (`pending`, `error`)
