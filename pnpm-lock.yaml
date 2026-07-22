@@ -76,7 +76,7 @@ importers:
         version: 0.45.2(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(pg@8.22.0)(postgres@3.4.7)
       hono:
         specifier: ^4.12.30
-        version: 4.12.30
+        version: 4.12.31
       jose:
         specifier: ^6.2.3
         version: 6.2.3
@@ -101,7 +101,7 @@ importers:
         version: 20.3.26
       '@hono/vite-dev-server':
         specifier: ^0.26.1
-        version: 0.26.1(hono@4.12.30)
+        version: 0.26.1(hono@4.12.31)
       '@types/pg':
         specifier: ^8.20.0
         version: 8.20.0
@@ -3864,8 +3864,8 @@ packages:
   highlight.js@10.7.3:
     resolution: {integrity: sha512-tzcUFauisWKNHaRkN4Wjl/ZA07gENAjFl3J/c480dprkGTg5EQstgaNFqBfUqCq54kZRIEcreTsAgF/m2quD7A==}
 
-  hono@4.12.30:
-    resolution: {integrity: sha512-emn+JoJjrN9YTpRDS5it/UI2SO9BAE37T6I3d963RxcZ81G9A4pr2SZTEiiaiKbzx+NKRg5BZ89fCL7gCJCUog==}
+  hono@4.12.31:
+    resolution: {integrity: sha512-zJIHFrl6bq3RDd2YusFNCDlM8qUprxKswyi/OPzPyzKDdyBXDqWx8bZlZ7R+saTdSTatUmb3O7K4SspGPaEOQg==}
     engines: {node: '>=16.9.0'}
 
   html-encoding-sniffer@6.0.0:
@@ -6140,14 +6140,14 @@ snapshots:
       protobufjs: 7.6.5
       yargs: 17.7.3
 
-  '@hono/node-server@1.19.14(hono@4.12.30)':
+  '@hono/node-server@1.19.14(hono@4.12.31)':
     dependencies:
-      hono: 4.12.30
+      hono: 4.12.31
 
-  '@hono/vite-dev-server@0.26.1(hono@4.12.30)':
+  '@hono/vite-dev-server@0.26.1(hono@4.12.31)':
     dependencies:
-      '@hono/node-server': 1.19.14(hono@4.12.30)
-      hono: 4.12.30
+      '@hono/node-server': 1.19.14(hono@4.12.31)
+      hono: 4.12.31
       minimatch: 9.0.9
 
   '@humanfs/core@0.19.2':
@@ -8701,7 +8701,7 @@ snapshots:
 
   highlight.js@10.7.3: {}
 
-  hono@4.12.30: {}
+  hono@4.12.31: {}
 
   html-encoding-sniffer@6.0.0:
     dependencies:
