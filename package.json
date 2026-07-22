@@ -48,7 +48,7 @@
     "@rocicorp/zero": ">=1.8.0 <2.0.0"
   },
   "devDependencies": {
-    "@angular/compiler": "^20.3.26",
+    "@angular/compiler": "^22.0.8",
     "@angular/core": "^20.3.0",
     "@angular/platform-browser": "^20.3.26",
     "@arethetypeswrong/cli": "^0.18.2",
@@ -62,7 +62,7 @@
     "rxjs": "^7.8.2",
     "typescript": "~5.9.2",
     "typescript-eslint": "^8.64.0",
-    "vitest": "^3.2.4",
+    "vitest": "^4.1.10",
     "zone.js": "^0.15.1"
   },
   "lint-staged": {

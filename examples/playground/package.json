@@ -29,8 +29,8 @@
   },
   "devDependencies": {
     "@analogjs/vite-plugin-angular": "2.6.3",
-    "@angular/build": "20.3.26",
-    "@angular/compiler": "20.3.26",
+    "@angular/build": "22.0.7",
+    "@angular/compiler": "22.0.8",
     "@hono/vite-dev-server": "^0.26.1",
     "@types/pg": "^8.20.0",
     "concurrently": "^10.0.3",
@@ -38,6 +38,6 @@
     "drizzle-zero": "^0.20.0",
     "tsx": "^4.23.1",
     "typescript": "~5.9.2",
-    "vite": "^7.3.6"
+    "vite": "^8.1.5"
   }
 }
