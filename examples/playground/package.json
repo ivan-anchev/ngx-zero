@@ -30,7 +30,7 @@
   "devDependencies": {
     "@analogjs/vite-plugin-angular": "2.6.3",
     "@angular/build": "20.3.26",
-    "@angular/compiler": "20.3.26",
+    "@angular/compiler": "20.3.27",
     "@hono/vite-dev-server": "^0.26.1",
     "@types/pg": "^8.20.0",
     "concurrently": "^10.0.3",
