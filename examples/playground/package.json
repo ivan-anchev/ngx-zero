@@ -16,7 +16,7 @@
     "db:setup": "pnpm db:up && pnpm db:push && pnpm db:seed"
   },
   "dependencies": {
-    "@angular/core": "20.3.27",
+    "@angular/core": "20.3.28",
     "@angular/platform-browser": "20.3.26",
     "@rocicorp/zero": "1.8.0",
     "dotenv": "^17.4.2",
